@@ -1,0 +1,75 @@
+{
+  "fixture_version": 1,
+  "description": "Public-only registry and opaque test payloads; these are not payable addresses or offers.",
+  "owner": "5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo",
+  "registry": {
+    "version": 1,
+    "kind": "paykit.app_registry",
+    "key_generation": 1,
+    "noise_public_key": null,
+    "apps": {
+      "savings": {
+        "display_name": "Savings",
+        "capabilities": {
+          "private_payments": false,
+          "payment_requests": false,
+          "receipts": false,
+          "outgoing_payments": true
+        }
+      },
+      "bitkit": {
+        "display_name": "Bitkit",
+        "capabilities": {
+          "private_payments": false,
+          "payment_requests": false,
+          "receipts": false,
+          "outgoing_payments": true
+        }
+      }
+    },
+    "default_app_id": "bitkit",
+    "default_apps_by_endpoint": {
+      "btc-onchain-p2tr": "savings"
+    }
+  },
+  "documents": [
+    {
+      "path": "/pub/paykit/v0/apps/savings/endpoints/btc-lightning-bolt12",
+      "body": "fixture:savings:bolt12"
+    },
+    {
+      "path": "/pub/paykit/v0/apps/bitkit/endpoints/btc-onchain-p2tr",
+      "body": "fixture:bitkit:p2tr"
+    },
+    {
+      "path": "/pub/paykit/v0/apps/savings/endpoints/btc-onchain-p2tr",
+      "body": "fixture:savings:p2tr"
+    },
+    {
+      "path": "/pub/paykit/v0/apps/bitkit/endpoints/btc-lightning-bolt12",
+      "body": "fixture:bitkit:bolt12"
+    }
+  ],
+  "expected": [
+    {
+      "app_id": "bitkit",
+      "identifier": "btc-lightning-bolt12",
+      "payload": "fixture:bitkit:bolt12"
+    },
+    {
+      "app_id": "savings",
+      "identifier": "btc-onchain-p2tr",
+      "payload": "fixture:savings:p2tr"
+    },
+    {
+      "app_id": "bitkit",
+      "identifier": "btc-onchain-p2tr",
+      "payload": "fixture:bitkit:p2tr"
+    },
+    {
+      "app_id": "savings",
+      "identifier": "btc-lightning-bolt12",
+      "payload": "fixture:savings:bolt12"
+    }
+  ]
+}

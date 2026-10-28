@@ -1,0 +1,27 @@
+[package]
+name = "paykit-discovery"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.91.1"
+description = "Get a Pubky identity's public Payment Endpoints with one function"
+license = "MIT"
+repository = "https://github.com/coreyphillips/paykit-discovery"
+keywords = ["paykit", "pubky", "payments", "wallet"]
+categories = ["network-programming"]
+readme = "README.md"
+include = ["/rust/src/**", "/fixtures/discovery.json", "/README.md", "/LICENSE", "/Cargo.lock"]
+
+[lib]
+path = "rust/src/lib.rs"
+
+[workspace]
+resolver = "2"
+
+[dependencies]
+paykit-lib = "=0.1.0"
+pubky = "=0.16.2"
+thiserror = "2"
+
+[dev-dependencies]
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

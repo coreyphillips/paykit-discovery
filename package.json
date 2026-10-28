@@ -1,0 +1,30 @@
+{
+  "name": "@coreyphillips/paykit-discovery",
+  "version": "0.1.0",
+  "description": "One function to discover public Paykit Payment Endpoints for a Pubky identity.",
+  "type": "module",
+  "main": "./typescript/dist/index.js",
+  "types": "./typescript/dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./typescript/dist/index.d.ts",
+      "import": "./typescript/dist/index.js",
+      "default": "./typescript/dist/index.js"
+    }
+  },
+  "files": ["typescript/dist", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "tsc -p typescript/tsconfig.json",
+    "check": "tsc -p typescript/tsconfig.json --noEmit",
+    "test": "npm run build && node --test typescript/test/*.test.mjs"
+  },
+  "engines": { "node": ">=22" },
+  "repository": { "type": "git", "url": "git+https://github.com/coreyphillips/paykit-discovery.git" },
+  "bugs": { "url": "https://github.com/coreyphillips/paykit-discovery/issues" },
+  "homepage": "https://github.com/coreyphillips/paykit-discovery#readme",
+  "keywords": ["paykit", "pubky", "payments", "wallet", "discovery"],
+  "author": "Corey Phillips",
+  "license": "MIT",
+  "dependencies": { "@synonymdev/pubky": "0.17.1" },
+  "devDependencies": { "@types/node": "^22.19.0", "typescript": "^5.9.3" }
+}
