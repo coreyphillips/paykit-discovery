@@ -29,7 +29,7 @@
     },
     "default_app_id": "bitkit",
     "default_apps_by_endpoint": {
-      "btc-onchain-p2tr": "savings"
+      "btc-bitcoin-p2tr": "savings"
     }
   },
   "documents": [
@@ -38,11 +38,11 @@
       "body": "fixture:savings:bolt12"
     },
     {
-      "path": "/pub/paykit/v0/apps/bitkit/endpoints/btc-onchain-p2tr",
+      "path": "/pub/paykit/v0/apps/bitkit/endpoints/btc-bitcoin-p2tr",
       "body": "fixture:bitkit:p2tr"
     },
     {
-      "path": "/pub/paykit/v0/apps/savings/endpoints/btc-onchain-p2tr",
+      "path": "/pub/paykit/v0/apps/savings/endpoints/btc-bitcoin-p2tr",
       "body": "fixture:savings:p2tr"
     },
     {
@@ -58,12 +58,12 @@
     },
     {
       "app_id": "savings",
-      "identifier": "btc-onchain-p2tr",
+      "identifier": "btc-bitcoin-p2tr",
       "payload": "fixture:savings:p2tr"
     },
     {
       "app_id": "bitkit",
-      "identifier": "btc-onchain-p2tr",
+      "identifier": "btc-bitcoin-p2tr",
       "payload": "fixture:bitkit:p2tr"
     },
     {

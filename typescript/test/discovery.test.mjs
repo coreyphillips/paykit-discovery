@@ -102,8 +102,8 @@ test("missing registry, App directory, or endpoint is ordinary absence", async (
 test("empty payloads are skipped and whitespace payloads are preserved", async () => {
   onlyBitkit();
   documents.set("/pub/paykit/v0/apps/bitkit/endpoints/btc-lightning-bolt12", "");
-  documents.set("/pub/paykit/v0/apps/bitkit/endpoints/btc-onchain-p2tr", " \n");
-  assert.deepEqual(await getPaymentList(owner), [{ appId: "bitkit", identifier: "btc-onchain-p2tr", payload: " \n" }]);
+  documents.set("/pub/paykit/v0/apps/bitkit/endpoints/btc-bitcoin-p2tr", " \n");
+  assert.deepEqual(await getPaymentList(owner), [{ appId: "bitkit", identifier: "btc-bitcoin-p2tr", payload: " \n" }]);
 });
 
 test("an App transport error rejects instead of returning partial success", async () => {
