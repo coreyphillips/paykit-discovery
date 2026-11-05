@@ -1,0 +1,138 @@
+{
+  "fixture_version": 1,
+  "description": "Test-only secrets, keys, and payloads for setPaymentList and encrypted Payment Lists. Never use these secrets for real funds or identities; the payloads are not payable.",
+  "secrets": [
+    {
+      "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+      "secret_hex": "5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc1",
+      "pubky": "aihfhgdfshrj8nz9ofo7khayc1mgcqa4wrrdjahs5tmgo4pna3iy"
+    },
+    {
+      "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art",
+      "secret_hex": "408b285c123836004f4b8842c89324c1f01382450c0d439af345ba7fc49acf70",
+      "pubky": "dztif3nc4c3sqjcu6e3wwhaqdyfk6kep7npkn5kebz13ja4qffoo"
+    }
+  ],
+  "equivalent_secret_inputs": [
+    "  ABANDON abandon\tabandon abandon abandon abandon\nabandon abandon abandon abandon abandon about  ",
+    "5EB00BBDDCF069084889A8AB9155568165F5C453CCB85E70811AAED6F6DA5FC1",
+    " 5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc1\n"
+  ],
+  "invalid_secrets": [
+    "",
+    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon",
+    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon",
+    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon notaword",
+    "5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc",
+    "5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc1aa",
+    "5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fcz",
+    "0x5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc1"
+  ],
+  "registry": {
+    "description": "App Registry writes, produced by paykit-lib 0.1.0 serialize_paykit_app_registry. Inputs and outputs are raw JSON strings so u64 key generations survive.",
+    "create": {
+      "app_ids": [
+        "bitkit",
+        "savings"
+      ],
+      "expected": "{\"version\":1,\"kind\":\"paykit.app_registry\",\"key_generation\":1,\"noise_public_key\":null,\"apps\":{\"bitkit\":{\"display_name\":\"bitkit\",\"capabilities\":{\"private_payments\":false,\"payment_requests\":false,\"receipts\":false,\"outgoing_payments\":false}},\"savings\":{\"display_name\":\"savings\",\"capabilities\":{\"private_payments\":false,\"payment_requests\":false,\"receipts\":false,\"outgoing_payments\":false}}},\"default_app_id\":null,\"default_apps_by_endpoint\":{}}"
+    },
+    "merge": {
+      "input": "{\"version\":1,\"kind\":\"paykit.app_registry\",\"key_generation\":18446744073709551615,\"noise_public_key\":\"5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo\",\"apps\":{\"savings\":{\"display_name\":\"Savings\",\"capabilities\":{\"private_payments\":false,\"payment_requests\":false,\"receipts\":true,\"outgoing_payments\":true}},\"bitkit\":{\"display_name\":\"Bitkit \\\"wallet\\\" \\\\ test\",\"capabilities\":{\"private_payments\":false,\"payment_requests\":false,\"receipts\":false,\"outgoing_payments\":true}}},\"default_app_id\":\"bitkit\",\"default_apps_by_endpoint\":{\"btc-lightning-bolt12\":\"bitkit\",\"btc-bitcoin-p2tr\":\"savings\"}}",
+      "app_ids": [
+        "bitkit",
+        "new-app"
+      ],
+      "expected": "{\"version\":1,\"kind\":\"paykit.app_registry\",\"key_generation\":18446744073709551615,\"noise_public_key\":\"5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo\",\"apps\":{\"bitkit\":{\"display_name\":\"Bitkit \\\"wallet\\\" \\\\ test\",\"capabilities\":{\"private_payments\":false,\"payment_requests\":false,\"receipts\":false,\"outgoing_payments\":true}},\"new-app\":{\"display_name\":\"new-app\",\"capabilities\":{\"private_payments\":false,\"payment_requests\":false,\"receipts\":false,\"outgoing_payments\":false}},\"savings\":{\"display_name\":\"Savings\",\"capabilities\":{\"private_payments\":false,\"payment_requests\":false,\"receipts\":true,\"outgoing_payments\":true}}},\"default_app_id\":\"bitkit\",\"default_apps_by_endpoint\":{\"btc-bitcoin-p2tr\":\"savings\",\"btc-lightning-bolt12\":\"bitkit\"}}"
+    }
+  },
+  "hierarchical_keys": {
+    "source": "pubky-common 0.16.2 tests/fixtures/hierarchical-keys-v1.json (file paths only)",
+    "identity_secret_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "vectors": [
+      {
+        "path": "/pub/app",
+        "key_hex": "b634d82c627ac540f95b650fdead73bdbf1713036dfc8ceceb05d5024529b341"
+      },
+      {
+        "path": "/pub/app/messages.json",
+        "key_hex": "70ae93506486e0bf9c00e004606fde35833db7c91758193fc4e962f3dbeac84d"
+      },
+      {
+        "path": "/pub/app/sub/file",
+        "key_hex": "91c9016c377ff00f0d9fee5fbab348cb5860d78c11fa7de8c8a738c6cb687cb0"
+      },
+      {
+        "path": "/pub/My File/\u00fcber%20.json",
+        "key_hex": "84d1dc3e1bb9dce823e19cd6721a6d181523e8b83827088fc7c1975d5ad12121"
+      },
+      {
+        "path": "/priv/chat/message.json",
+        "key_hex": "362009f14b7622f079e11bbed2b7494dd426218dd6c93aef3e473ccd4e5ff870"
+      },
+      {
+        "path": "/pub/app/caf\u00e9.json",
+        "key_hex": "343632f97e3aa24d76c3771956018d2ffd7c5b6fe1bb3ce3a5934e0ce95fba14"
+      },
+      {
+        "path": "/pub/app/cafe\u0301.json",
+        "key_hex": "97c81228ef5520c46869bc299c64faa98f1fe4c1111aa26a906846b702618944"
+      }
+    ]
+  },
+  "encrypted": {
+    "secret_hex": "5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc1",
+    "owner": "aihfhgdfshrj8nz9ofo7khayc1mgcqa4wrrdjahs5tmgo4pna3iy",
+    "id": "00112233445566778899aabbccddeeff",
+    "path": "/pub/paykit-discovery/v1/encrypted/00112233445566778899aabbccddeeff",
+    "nonce_hex": "000102030405060708090a0b",
+    "key_hex": "c9764ede7f6af2d41006ec1c50e644c4fa3fe3efab22fc73947af172b3e5343d",
+    "endpoints": [
+      {
+        "app_id": "savings",
+        "identifier": "btc-lightning-bolt12",
+        "payload": "fixture:savings:bolt12"
+      },
+      {
+        "app_id": "bitkit",
+        "identifier": "btc-bitcoin-p2tr",
+        "payload": "fixture:bitkit:p2tr"
+      },
+      {
+        "app_id": "bitkit",
+        "identifier": "btc-lightning-bolt12",
+        "payload": "{\"memo\":\"caf\u00e9 \\\\ \u001f\u007f\u2028\",\n\t\"x\":\"</a>\ud83d\ude00\"}"
+      }
+    ],
+    "plaintext_hex": "7b2276657273696f6e223a312c226b696e64223a227061796b69742d646973636f766572792e656e637279707465645f7061796d656e745f6c697374222c22656e64706f696e7473223a5b7b226170705f6964223a226269746b6974222c226964656e746966696572223a226274632d626974636f696e2d70327472222c227061796c6f6164223a22666978747572653a6269746b69743a70327472227d2c7b226170705f6964223a226269746b6974222c226964656e746966696572223a226274632d6c696768746e696e672d626f6c743132222c227061796c6f6164223a227b5c226d656d6f5c223a5c22636166c3a9205c5c5c5c205c75303031667fe280a85c222c5c6e5c745c22785c223a5c223c2f613ef09f98805c227d227d2c7b226170705f6964223a22736176696e6773222c226964656e746966696572223a226274632d6c696768746e696e672d626f6c743132222c227061796c6f6164223a22666978747572653a736176696e67733a626f6c743132227d5d7d",
+    "sealed_hex": "000102030405060708090a0bcebb69ef0f3ea1bddfbe9a2313d9f6074cb5ac09ae5c4b95ae2b47a5f59a42919f026386232ed1cc1e5b530a80cf78306841e794c60cc2328bad53bc30ae28c93927c15c94e86c74506f906abfd72f49a2190caaecf836d9ab92e30360b7bd511d7e1bef542b71eba99d0dcf32e69495b2e711c5afc50aaad7f961817f80217a41be09acd735220fdf37993789bda39839bff04354d8c4e3afb58aa1877fb1bb1c4e73ce612092f8166bd18339ed9c5eba05013159a0f6f8d987a7d25bbbe2e02e510bfceeba6a4d32dba96ac444e918ba995c15fb20703ac4f4e171f011fd220cf12ae2e8b06ce3c04676fad44c3e81d9629951cb71c260bb92fe714d8fd7088c7aac32e1efc867d5e5b240e3c8bee7c69380c2688bae1e917ebd43f6aea3566d9b14f3d362706de3ca40809de494eea25ff23831b083b7485acf8f17d7d9873eea677032d19c7c2cd563c3317dbc1cc96e2c3611cb8a91f60ceaa0ef8aafff64866f5ce404661514ec97bb3ce4c34ef483d1b21aff37fe04a440f7821055227bd7707884e02f860e0effef",
+    "access": "v1.00112233445566778899aabbccddeeff.c9764ede7f6af2d41006ec1c50e644c4fa3fe3efab22fc73947af172b3e5343d",
+    "expected": [
+      {
+        "app_id": "bitkit",
+        "identifier": "btc-bitcoin-p2tr",
+        "payload": "fixture:bitkit:p2tr"
+      },
+      {
+        "app_id": "bitkit",
+        "identifier": "btc-lightning-bolt12",
+        "payload": "{\"memo\":\"caf\u00e9 \\\\ \u001f\u007f\u2028\",\n\t\"x\":\"</a>\ud83d\ude00\"}"
+      },
+      {
+        "app_id": "savings",
+        "identifier": "btc-lightning-bolt12",
+        "payload": "fixture:savings:bolt12"
+      }
+    ]
+  },
+  "invalid_access": [
+    "",
+    "v1.00112233445566778899aabbccddeeff",
+    "v2.00112233445566778899aabbccddeeff.c9764ede7f6af2d41006ec1c50e644c4fa3fe3efab22fc73947af172b3e5343d",
+    "v1.00112233445566778899AABBCCDDEEFF.c9764ede7f6af2d41006ec1c50e644c4fa3fe3efab22fc73947af172b3e5343d",
+    "v1.00112233445566778899aabbccddeeff.c9764ede7f6af2d41006ec1c50e644c4fa3fe3efab22fc73947af172b3e5343",
+    "v1.00112233445566778899aabbccddeef.c9764ede7f6af2d41006ec1c50e644c4fa3fe3efab22fc73947af172b3e5343d",
+    "v1.00112233445566778899aabbccddeeff.c9764ede7f6af2d41006ec1c50e644c4fa3fe3efab22fc73947af172b3e5343d.x",
+    "v1.../../app-registry.json.c9764ede7f6af2d41006ec1c50e644c4fa3fe3efab22fc73947af172b3e5343d"
+  ]
+}

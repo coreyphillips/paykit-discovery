@@ -3,13 +3,13 @@ name = "paykit-discovery"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.91.1"
-description = "Get a Pubky identity's public Payment Endpoints with one function"
+description = "Get and set a Pubky identity's Paykit Payment Endpoints, publicly or encrypted"
 license = "MIT"
 repository = "https://github.com/coreyphillips/paykit-discovery"
 keywords = ["paykit", "pubky", "payments", "wallet"]
 categories = ["network-programming"]
 readme = "README.md"
-include = ["/rust/src/**", "/fixtures/discovery.json", "/README.md", "/LICENSE", "/Cargo.lock"]
+include = ["/rust/src/**", "/fixtures/discovery.json", "/fixtures/publishing.json", "/README.md", "/LICENSE", "/Cargo.lock"]
 
 [lib]
 path = "rust/src/lib.rs"
@@ -18,10 +18,16 @@ path = "rust/src/lib.rs"
 resolver = "2"
 
 [dependencies]
+aes-gcm = { version = "0.10", features = ["zeroize"] }
+bip39 = { version = "2.2", features = ["zeroize"] }
+hex = "0.4"
 paykit-lib = "=0.1.0"
 pubky = "=0.16.2"
+pubky-common = "=0.16.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 thiserror = "2"
+zeroize = "1"
 
 [dev-dependencies]
-serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
