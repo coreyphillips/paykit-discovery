@@ -5,7 +5,7 @@
 Discover every public Payment Endpoint published by the registered Paykit Apps
 on a Pubky identity, with no sign-in, private key, database, or SDK setup.
 Publish your own Payment Endpoints from your Pubky mnemonic or secret, either
-publicly or as an encrypted list only the people you share it with can read.
+publicly or as an encrypted list that you share with an access string.
 
 ## TypeScript
 
@@ -48,7 +48,8 @@ const details = [
 // Public: anyone can discover these with getPaymentList(pubky).
 const { pubky } = await setPaymentList(mnemonic, details);
 
-// Encrypted: only holders of `access` can read this list.
+// Encrypted: share `access` with whoever should read this list. Your own
+// mnemonic and Pubky apps granted `e` on this path can also decrypt it.
 const result = await setPaymentList(mnemonic, details, true);
 const shared = await getPaymentList(result.pubky, result.access);
 ```
