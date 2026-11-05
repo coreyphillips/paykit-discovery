@@ -1,8 +1,13 @@
-//! Retrieve a Pubky identity's public Payment Endpoints with one function.
+//! Get and set a Pubky identity's Paykit Payment Endpoints.
 //!
-//! No account, session, private key, or Paykit SDK configuration is required.
+//! [`get_payment_list`] reads public Payment Endpoints. It needs no account,
+//! session, private key, or Paykit SDK configuration. [`set_payment_list`]
+//! publishes a Payment List from the identity's BIP39 mnemonic or hex secret,
+//! either as public Paykit endpoints or as one encrypted document that
+//! [`get_encrypted_payment_list`] opens with the returned access string.
+//!
 //! The wallet interprets and validates each opaque payload before paying it.
-//! This crate does not retrieve Private Payment Lists or execute payments.
+//! This crate does not handle Paykit Private Payment Lists or execute payments.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
@@ -11,6 +16,10 @@ use std::collections::{HashMap, HashSet};
 
 use paykit_lib::{PaykitAppId, PaykitAppRegistry, PaymentEndpointIdentifier, PaymentList};
 use pubky::{PubkyResource, PublicKey, PublicStorage};
+
+mod encrypted;
+mod publish;
+mod secret;
 
 const MAX_ENDPOINTS: usize = 256;
 const MAX_PAYLOAD_BYTES: usize = 4 * 1024 * 1024;
@@ -32,13 +41,29 @@ pub struct PaymentEndpoint {
     pub payload: String,
 }
 
-/// A lookup failure. No partial Payment List is returned on error.
+/// A lookup or publishing failure. No partial Payment List is returned on error.
+///
+/// Messages never include a secret, mnemonic, or access key.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
     /// The input is not a bare Pubky identity in a supported form.
     #[error("expected a Pubky public key, pubky<key>, or pubky://<key> without a resource path")]
     InvalidPubky,
+    /// The secret is not a BIP39 English mnemonic or a 64-character hex identity secret.
+    #[error("expected a BIP39 English mnemonic or a 64-character hex identity secret")]
+    InvalidSecret,
+    /// The Payment Endpoints or the access string are invalid.
+    #[error("invalid input: {0}")]
+    InvalidInput(&'static str),
+    /// Signing in failed, for example because the identity has no homeserver.
+    #[error("could not sign in to the identity's homeserver: {0}")]
+    Auth(#[source] pubky::Error),
+    /// Reading the current state or writing the Payment List failed.
+    ///
+    /// A concurrent App Registry change also lands here; read again and retry.
+    #[error("could not publish the Payment List: {0}")]
+    Publish(#[source] paykit_lib::PaykitError),
     /// The default Pubky client could not be initialized.
     #[error("could not initialize Pubky: {0}")]
     Client(#[source] pubky::Error),
@@ -98,7 +123,14 @@ pub enum Error {
 pub async fn get_payment_list(pubky: &str) -> Result<Vec<PaymentEndpoint>, Error> {
     let owner = parse_identity(pubky)?;
     let storage = pubky::PublicStorage::new().map_err(Error::Client)?;
-    let Some(registry) = paykit_lib::get_paykit_app_registry(&storage, &owner).await? else {
+    discover(&storage, &owner).await
+}
+
+async fn discover(
+    storage: &PublicStorage,
+    owner: &PublicKey,
+) -> Result<Vec<PaymentEndpoint>, Error> {
+    let Some(registry) = paykit_lib::get_paykit_app_registry(storage, owner).await? else {
         return Ok(Vec::new());
     };
 
@@ -109,10 +141,111 @@ pub async fn get_payment_list(pubky: &str) -> Result<Vec<PaymentEndpoint>, Error
     let mut budget = Budget::default();
     let mut endpoints = Vec::new();
     for app_id in app_ids {
-        let list = read_app_payment_list(&storage, &owner, app_id, &mut budget).await?;
+        let list = read_app_payment_list(storage, owner, app_id, &mut budget).await?;
         append_payment_list(&mut endpoints, &registry, app_id, list);
     }
     Ok(order_endpoints(endpoints))
+}
+
+/// What [`set_payment_list`] published.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PublishedPaymentList {
+    /// The identity that owns the list, as a bare z-base-32 public key.
+    pub pubky: String,
+    /// `None` for public mode. In encrypted mode, the access string to give to
+    /// the people who may read the list. It contains the decryption key.
+    pub access: Option<String>,
+}
+
+/// Publish a Payment List as the identity behind `secret`.
+///
+/// `secret` is a BIP39 English mnemonic or the 32-byte identity secret as
+/// 64 hex characters. A mnemonic resolves the way Pubky Ring does: the first
+/// 32 bytes of its BIP39 seed (no passphrase) are the identity secret.
+/// Whitespace and letter case in the phrase are normalized. The identity must
+/// already have a homeserver; this function signs in but never signs up.
+///
+/// With `encrypted == false`, every App in `endpoints` is added to the Paykit
+/// App Registry if missing, each endpoint is written to its public Paykit path,
+/// and that App's other published endpoints are removed. Apps not named in
+/// `endpoints` are untouched. [`get_payment_list`] then returns the records.
+///
+/// With `encrypted == true`, nothing public changes. The whole list is written
+/// as one AES-256-GCM document at a new random path under
+/// `/pub/paykit-discovery/v1/encrypted/`, keyed with the Pubky hierarchical
+/// key for that path. The result's `access` string opens it with
+/// [`get_encrypted_payment_list`]. Every call creates a new document with its
+/// own path and key, so each recipient can get their own list. Earlier
+/// documents stay readable to anyone holding their access strings.
+///
+/// Endpoints use the same rules discovery enforces: 1 to 256 records, App IDs
+/// of lowercase letters, digits, and `-`, valid Payment Endpoint Identifiers,
+/// non-empty payloads of at most 64 KiB (4 MiB in total), at most 64 Apps, and
+/// no repeated App ID and identifier pair. Run this inside a Tokio runtime.
+///
+/// # Errors
+///
+/// Returns [`Error::InvalidSecret`] or [`Error::InvalidInput`] before any
+/// network access. Sign-in failures return [`Error::Auth`], and failed reads,
+/// writes, or a concurrent App Registry change return [`Error::Publish`]. The
+/// call is not atomic: after an error some writes may have landed, and calling
+/// again with the same arguments is safe.
+///
+/// # Examples
+///
+/// ```no_run
+/// use paykit_discovery::{get_encrypted_payment_list, set_payment_list, PaymentEndpoint};
+///
+/// # async fn example(mnemonic: &str) -> Result<(), paykit_discovery::Error> {
+/// let endpoints = [PaymentEndpoint {
+///     app_id: "my-wallet".into(),
+///     identifier: "btc-lightning-bolt11".into(),
+///     payload: "lnbc1...".into(),
+/// }];
+/// let published = set_payment_list(mnemonic, &endpoints, true).await?;
+/// let access = published.access.expect("encrypted mode returns an access string");
+/// let payments = get_encrypted_payment_list(&published.pubky, &access).await?;
+/// assert_eq!(payments, endpoints);
+/// # Ok(())
+/// # }
+/// ```
+pub async fn set_payment_list(
+    secret: &str,
+    endpoints: &[PaymentEndpoint],
+    encrypted: bool,
+) -> Result<PublishedPaymentList, Error> {
+    let secret = secret::parse_secret(secret)?;
+    let list = publish::validate_endpoints(endpoints).map_err(Error::InvalidInput)?;
+    let document = if encrypted {
+        Some(encrypted::serialize_document(&list.endpoints())?)
+    } else {
+        None
+    };
+    let pubky = pubky::Pubky::new().map_err(Error::Client)?;
+    publish::publish(&pubky, &secret, &list, document.as_deref()).await
+}
+
+/// Open an encrypted Payment List published by [`set_payment_list`].
+///
+/// `pubky` accepts the same forms as [`get_payment_list`]. `access` is the
+/// string returned by the encrypted publish. No login is needed. A missing
+/// document returns an empty vector. Endpoints are sorted by App ID and
+/// identifier. Run this inside a Tokio runtime.
+///
+/// # Errors
+///
+/// Returns [`Error::InvalidPubky`] or [`Error::InvalidInput`] before any
+/// network access. A wrong access string, a document moved to another path or
+/// identity, tampering, or a malformed document returns [`Error::Discovery`]
+/// with invalid data. Transport failures and oversized documents also fail.
+pub async fn get_encrypted_payment_list(
+    pubky: &str,
+    access: &str,
+) -> Result<Vec<PaymentEndpoint>, Error> {
+    let owner = parse_identity(pubky)?;
+    let access = encrypted::parse_access(access)?;
+    let storage = pubky::PublicStorage::new().map_err(Error::Client)?;
+    encrypted::read(&storage, &owner, &access).await
 }
 
 fn parse_identity(input: &str) -> Result<PublicKey, Error> {

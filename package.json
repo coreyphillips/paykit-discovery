@@ -1,7 +1,7 @@
 {
   "name": "@coreyphillips/paykit-discovery",
   "version": "0.1.0",
-  "description": "One function to discover public Paykit Payment Endpoints for a Pubky identity.",
+  "description": "Get and set Paykit Payment Endpoints for a Pubky identity, publicly or encrypted.",
   "type": "module",
   "main": "./typescript/dist/index.js",
   "types": "./typescript/dist/index.d.ts",
@@ -25,6 +25,6 @@
   "keywords": ["paykit", "pubky", "payments", "wallet", "discovery"],
   "author": "Corey Phillips",
   "license": "MIT",
-  "dependencies": { "@synonymdev/pubky": "0.17.1" },
+  "dependencies": { "@scure/bip39": "2.4.0", "@synonymdev/pubky": "0.17.1" },
   "devDependencies": { "@types/node": "^22.19.0", "typescript": "^5.9.3" }
 }

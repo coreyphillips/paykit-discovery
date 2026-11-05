@@ -1,4 +1,7 @@
-/** A lookup failed; an incomplete Payment List is never returned as success. */
+/**
+ * A lookup or publish failed; an incomplete Payment List is never returned as success.
+ * Messages and causes never include a secret, mnemonic, or access key.
+ */
 export class PaymentListError extends Error {
     code;
     name = "PaymentListError";
