@@ -2,9 +2,10 @@
 
 This project gets and sets Paykit Payment Endpoints for a Pubky identity. Keep
 the integration small: in TypeScript, `getPaymentList(pubky, access?)` and
-`setPaymentList(secret, paymentDetails, encrypted?)`; in Rust,
-`get_payment_list(pubky)`, `get_encrypted_payment_list(pubky, access)`, and
-`set_payment_list(secret, endpoints, encrypted)`.
+`setPaymentList(secretOrSession, paymentDetails, encrypted?)`; in Rust,
+`get_payment_list(pubky)`, `get_encrypted_payment_list(pubky, access)`,
+`set_payment_list(secret, endpoints, encrypted)`, and
+`set_payment_list_with_session(session, endpoints)`.
 
 - Return an array/vector of endpoint records. Preserve the publishing App ID,
   Payment Endpoint Identifier, and opaque UTF-8 Payment Endpoint Payload.
@@ -12,12 +13,17 @@ the integration small: in TypeScript, `getPaymentList(pubky, access?)` and
   values; never reject or drop an endpoint because its identifier is unlisted.
   Keep both lists equal to `known_identifiers` in `fixtures/discovery.json`.
 - Discovery does not require a login, identity secret, database, Encrypted
-  Link, or payment execution adapter. Only the set functions take a secret.
+  Link, or payment execution adapter. Only the set functions take a secret or
+  a session.
 - A secret is a BIP39 English mnemonic or a 32-byte identity secret (64 hex
   characters, or bytes in TypeScript). Resolve mnemonics as Pubky Ring does
   (`pubky-core-ffi`): the first 32 bytes of the BIP39 seed with no passphrase.
   Never log secrets, mnemonics, derived keys, or access keys, or put them in
   error messages or causes. Zero derived buffers when done.
+- A Pubky session is the alternative for apps that shouldn't hold the secret.
+  It works in public mode only. The session belongs to the caller: never sign
+  it out or free it. Check its capabilities before writing. The caller runs
+  the auth flow; do not add auth flows to this package.
 - Missing public data is empty. A missing encrypted document is an error,
   because an access string means a list should exist. Network, malformed-data,
   and resource-limit failures are errors; never return a silently incomplete

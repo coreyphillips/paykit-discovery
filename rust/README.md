@@ -65,6 +65,12 @@ writes one encrypted document at a new random path and returns the access
 string that opens it. `get_encrypted_payment_list` returns `Error::NotFound` if
 that document is missing. Errors never include the secret or access key.
 
+Apps that shouldn't hold the secret can publish public endpoints with
+`set_payment_list_with_session(&session, &details)` instead. Request
+`/pub/paykit/:rw` for the session. It's borrowed and never signed out, must come
+from `pubky =0.16.2`, and can't be used for encrypted mode, because that key
+derives from the identity secret.
+
 The `identifiers` module names common identifiers, but identifiers are open
 strings and any valid one can be published and read. Payloads are opaque
 receiving details. Your wallet validates them, determines which identifiers it

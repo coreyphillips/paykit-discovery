@@ -1,17 +1,17 @@
 import { PublicKey, PublicStorage } from "@synonymdev/pubky";
 import {
   compare, flattenEndpoints, MAX_DOCUMENT_BYTES, MAX_ENDPOINTS, MAX_PAYLOAD_BYTES, validateEndpoints,
-  type PaymentEndpoint, type PaymentSecret, type SetPaymentListResult,
+  type PaymentEndpoint, type PaymentSecret, type PaymentSession, type SetPaymentListResult,
 } from "./endpoints.js";
 import { parseAccess, readEncrypted, serializeDocument } from "./encrypted.js";
 import { PaymentListError } from "./errors.js";
 import { address, endpointPrefix, listIdentifiers, readText } from "./io.js";
-import { publish } from "./publish.js";
+import { publish, publishWithSession } from "./publish.js";
 import { parseRegistry } from "./registry.js";
 import { parseSecret } from "./secret.js";
 export { PaymentListError, type PaymentListErrorCode } from "./errors.js";
 export { Identifier } from "./endpoints.js";
-export type { KnownIdentifier, PaymentEndpoint, PaymentIdentifier, PaymentSecret, SetPaymentListResult } from "./endpoints.js";
+export type { KnownIdentifier, PaymentEndpoint, PaymentIdentifier, PaymentSecret, PaymentSession, SetPaymentListResult } from "./endpoints.js";
 
 const REGISTRY_PATH = "/pub/paykit/v0/app-registry.json";
 const MAX_REQUESTS = 512;
@@ -85,6 +85,13 @@ export async function getPaymentList(pubky: string, access?: string): Promise<Pa
  * Whitespace and letter case in the phrase are normalized. The identity must
  * already have a homeserver; this function signs in but never signs up.
  *
+ * Apps that should not hold the secret can pass a Pubky `Session` instead, for
+ * example from a Pubky Ring approval of `/pub/paykit/:rw`. That works in public
+ * mode only, because the encrypted key derives from the identity secret. The
+ * session stays yours: it is never signed out or freed. If its capabilities do
+ * not cover a path this list has to write, the call rejects with `AUTH` before
+ * writing any endpoint.
+ *
  * Public mode (`encrypted` omitted or `false`) adds every App in
  * `paymentDetails` to the Paykit App Registry if missing, writes each endpoint
  * to its public Paykit path, and removes that App's other published endpoints.
@@ -105,16 +112,24 @@ export async function getPaymentList(pubky: string, access?: string): Promise<Pa
  * no repeated App ID and identifier pair.
  *
  * Invalid secrets and input reject with `INVALID_SECRET` or `INVALID_INPUT`
- * before any network access. Sign-in failures reject with `AUTH`; failed writes
- * and concurrent App Registry changes reject with `TRANSPORT`. The call is not
- * atomic: after a rejection some writes may have landed, and calling again
- * with the same arguments is safe. Errors never include the secret.
+ * before any network access. Sign-in failures and sessions the homeserver
+ * refuses reject with `AUTH`; other failed writes and concurrent App Registry
+ * changes reject with `TRANSPORT`. The call is not atomic: after a rejection
+ * some writes may have landed, and calling again with the same arguments is
+ * safe. Errors never include the secret.
  */
 export async function setPaymentList(
-  secret: PaymentSecret,
+  secret: PaymentSecret | PaymentSession,
   paymentDetails: PaymentEndpoint[],
   encrypted = false,
 ): Promise<SetPaymentListResult> {
+  if (isSession(secret)) {
+    const apps = validateEndpoints(paymentDetails, "INVALID_INPUT");
+    if (encrypted !== false) {
+      throw new PaymentListError("INVALID_INPUT", "Encrypted mode needs the identity secret, not a session");
+    }
+    return publishWithSession(secret, apps);
+  }
   const identitySecret = parseSecret(secret);
   try {
     const apps = validateEndpoints(paymentDetails, "INVALID_INPUT");
@@ -124,6 +139,12 @@ export async function setPaymentList(
   } finally {
     identitySecret.fill(0);
   }
+}
+
+// By shape, not `instanceof`: the session may come from the app's own SDK copy.
+function isSession(value: unknown): value is PaymentSession {
+  return typeof value === "object" && value !== null && !(value instanceof Uint8Array)
+    && "storage" in value && "info" in value;
 }
 
 function normalizePubky(input: string): string {

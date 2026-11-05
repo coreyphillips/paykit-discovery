@@ -1,16 +1,22 @@
-//! Publishing a Payment List from an identity secret.
+//! Publishing a Payment List from an identity secret or a Pubky session.
 
 use std::collections::BTreeMap;
 
 use paykit_lib::{
-    PaykitApp, PaykitAppCapabilities, PaykitAppId, PaykitAppRegistry, PaymentEndpointIdentifier,
-    PaymentEndpointPayload, PAYKIT_APP_REGISTRY_MAX_APPS, PAYMENT_ENDPOINT_PAYLOAD_MAX_BYTES,
+    PaykitApp, PaykitAppCapabilities, PaykitAppId, PaykitAppRegistry, PaykitError,
+    PaymentEndpointIdentifier, PaymentEndpointPayload, PAYKIT_APP_REGISTRY_MAX_APPS,
+    PAYKIT_APP_REGISTRY_PATH, PAYMENT_ENDPOINT_PAYLOAD_MAX_BYTES,
 };
-use pubky::{ClientId, Keypair, Pubky, PubkySession, PublicKey, PublicStorage};
+use pubky::{
+    Capability, ClientId, Keypair, Pubky, PubkySession, PublicKey, PublicStorage, StatusCode,
+    StoragePath,
+};
+use pubky_common::capabilities::Action;
 use zeroize::Zeroizing;
 
 use crate::{
-    encrypted, Error, PaymentEndpoint, PublishedPaymentList, MAX_ENDPOINTS, MAX_PAYLOAD_BYTES,
+    encrypted, endpoint_prefix, Error, PaymentEndpoint, PublishedPaymentList, MAX_ENDPOINTS,
+    MAX_PAYLOAD_BYTES,
 };
 
 /// Shown in the identity's session list on its homeserver.
@@ -163,12 +169,84 @@ pub(crate) async fn publish(
     })
 }
 
+/// Publish an already validated list in public mode with the caller's session.
+///
+/// The session stays the caller's: it is borrowed and never signed out.
+pub(crate) async fn publish_with_session(
+    session: &PubkySession,
+    storage: &PublicStorage,
+    list: &ValidatedList,
+) -> Result<PublishedPaymentList, Error> {
+    let owner = session.public_key();
+    publish_public(session, storage, &owner, list).await?;
+    Ok(PublishedPaymentList {
+        pubky: owner.z32(),
+        access: None,
+    })
+}
+
+/// Whether `capabilities` allow writing `path`, by Pubky's own scope rules.
+pub(crate) fn can_write(capabilities: &[Capability], path: &str) -> bool {
+    let Ok(path) = StoragePath::new(path) else {
+        return false;
+    };
+    capabilities.iter().any(|capability| {
+        capability.actions().contains(&Action::Write) && capability.scope_covers_path(&path)
+    })
+}
+
+fn require_write(capabilities: &[Capability], path: &str) -> Result<(), Error> {
+    if can_write(capabilities, path) {
+        Ok(())
+    } else {
+        Err(Error::SessionScope)
+    }
+}
+
+fn endpoint_path(app_id: &PaykitAppId, identifier: &PaymentEndpointIdentifier) -> String {
+    format!("{}{}", endpoint_prefix(app_id), identifier.as_str())
+}
+
+fn is_auth_failure(error: &pubky::Error) -> bool {
+    match error {
+        pubky::Error::Authentication(_) => true,
+        pubky::Error::Request(pubky::errors::RequestError::Server { status, .. }) => {
+            *status == StatusCode::UNAUTHORIZED || *status == StatusCode::FORBIDDEN
+        }
+        _ => false,
+    }
+}
+
+/// Report a write the homeserver refused as [`Error::Auth`], not a transport failure.
+pub(crate) fn write_error(error: PaykitError) -> Error {
+    match error {
+        PaykitError::Transport { context, source } => match source.downcast::<pubky::Error>() {
+            Ok(error) if is_auth_failure(&error) => Error::Auth(error),
+            Ok(error) => Error::Publish(PaykitError::Transport {
+                context,
+                source: error.into(),
+            }),
+            Err(source) => Error::Publish(PaykitError::Transport { context, source }),
+        },
+        error => Error::Publish(error),
+    }
+}
+
 async fn publish_public(
     session: &PubkySession,
     storage: &PublicStorage,
     owner: &PublicKey,
     list: &ValidatedList,
 ) -> Result<(), Error> {
+    // Fail before any write when a scoped session cannot finish the job.
+    let info = session.info();
+    let capabilities = info.capabilities();
+    for (app_id, endpoints) in &list.apps {
+        for (identifier, _) in endpoints {
+            require_write(capabilities, &endpoint_path(app_id, identifier))?;
+        }
+    }
+
     // Register Apps first so every endpoint written below is discoverable.
     // paykit-lib checks the registry revision under a write lock, so a
     // concurrent registry change fails instead of being overwritten.
@@ -179,15 +257,17 @@ async fn publish_public(
         None => {
             let mut registry = PaykitAppRegistry::new(None);
             register_missing_apps(&mut registry, list)?;
+            require_write(capabilities, PAYKIT_APP_REGISTRY_PATH)?;
             paykit_lib::create_paykit_app_registry(session, &registry)
                 .await
-                .map_err(Error::Publish)?;
+                .map_err(write_error)?;
         }
         Some((mut registry, revision)) => {
             if register_missing_apps(&mut registry, list)? {
+                require_write(capabilities, PAYKIT_APP_REGISTRY_PATH)?;
                 paykit_lib::update_paykit_app_registry(session, &registry, &revision)
                     .await
-                    .map_err(Error::Publish)?;
+                    .map_err(write_error)?;
             }
         }
     }
@@ -197,17 +277,22 @@ async fn publish_public(
         let existing = paykit_lib::list_payment_endpoint_identifiers(storage, owner, app_id)
             .await
             .map_err(Error::Publish)?;
+        let stale: Vec<_> = existing
+            .into_iter()
+            .filter(|identifier| !endpoints.iter().any(|(kept, _)| kept == identifier))
+            .collect();
+        for identifier in &stale {
+            require_write(capabilities, &endpoint_path(app_id, identifier))?;
+        }
         for (identifier, payload) in endpoints {
             paykit_lib::set_payment_endpoint(session, app_id, identifier.clone(), payload.clone())
                 .await
-                .map_err(Error::Publish)?;
+                .map_err(write_error)?;
         }
-        for identifier in existing {
-            if !endpoints.iter().any(|(kept, _)| *kept == identifier) {
-                paykit_lib::remove_payment_endpoint(session, app_id, identifier)
-                    .await
-                    .map_err(Error::Publish)?;
-            }
+        for identifier in stale {
+            paykit_lib::remove_payment_endpoint(session, app_id, identifier)
+                .await
+                .map_err(write_error)?;
         }
     }
     Ok(())
@@ -228,6 +313,6 @@ async fn publish_encrypted(
     // Create-only: an existing document at this path is never overwritten.
     paykit_lib::put_resource_if_revision(session, &path, sealed, None, encrypted::MAX_SEALED_BYTES)
         .await
-        .map_err(Error::Publish)?;
+        .map_err(write_error)?;
     Ok(encrypted::format_access(&id, &key))
 }

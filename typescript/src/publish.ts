@@ -1,7 +1,7 @@
 import {
   Keypair, Pubky, PublicStorage, type Path, type Session, type SessionStorage, type Signer, type StorageLock,
 } from "@synonymdev/pubky";
-import { MAX_DOCUMENT_BYTES, MAX_ENDPOINTS, type AppEndpoints, type SetPaymentListResult } from "./endpoints.js";
+import { MAX_DOCUMENT_BYTES, MAX_ENDPOINTS, type AppEndpoints, type PaymentSession, type SetPaymentListResult } from "./endpoints.js";
 import { deriveKey, documentPath, formatAccess, MAX_SEALED_BYTES, newDocumentId, seal } from "./encrypted.js";
 import { PaymentListError } from "./errors.js";
 import { address, endpointPrefix, isMissing, listIdentifiers, readBytes, readText, statusOf } from "./io.js";
@@ -13,6 +13,8 @@ const REGISTRY_PATH = "/pub/paykit/v0/app-registry.json";
 const MAX_REQUESTS = 512;
 const LOCK_SECONDS = 60;
 const LOCK_ATTEMPTS = 8;
+/** `Signer.signin` always grants root storage access. */
+const ROOT_CAPABILITIES = ["/:rw"];
 
 const encoder = new TextEncoder();
 
@@ -45,7 +47,7 @@ export async function publish(
       return { pubky: owner, encrypted: true, access: await publishEncrypted(storage, secret, owner, document) };
     }
     publicStorage = new PublicStorage();
-    await publishPublic(storage, publicStorage, owner, apps);
+    await publishPublic(storage, publicStorage, owner, apps, ROOT_CAPABILITIES);
     return { pubky: owner, encrypted: false };
   } catch (cause) {
     if (cause instanceof PaymentListError) throw cause;
@@ -57,17 +59,87 @@ export async function publish(
   }
 }
 
+/**
+ * Publish an already validated list in public mode with the caller's session.
+ * The session stays the caller's: it is never signed out or freed here. Only
+ * the `info` and `storage` handles read from it are released.
+ */
+export async function publishWithSession(session: PaymentSession, apps: AppEndpoints[]): Promise<SetPaymentListResult> {
+  let storage: SessionStorage | undefined;
+  let publicStorage: PublicStorage | undefined;
+  try {
+    const { owner, capabilities } = readSession(session);
+    storage = session.storage as SessionStorage;
+    publicStorage = new PublicStorage();
+    await publishPublic(storage, publicStorage, owner, apps, capabilities);
+    return { pubky: owner, encrypted: false };
+  } catch (cause) {
+    if (cause instanceof PaymentListError) throw cause;
+    throw new PaymentListError("TRANSPORT", "Could not publish the Payment List", { cause });
+  } finally {
+    publicStorage?.free();
+    storage?.free();
+  }
+}
+
+function readSession(session: PaymentSession): { owner: string; capabilities: string[] } {
+  let info: (PaymentSession["info"] & { free?(): void }) | undefined;
+  let key: (PaymentSession["info"]["publicKey"] & { free?(): void }) | undefined;
+  try {
+    info = session.info;
+    key = info.publicKey;
+    return { owner: key.z32(), capabilities: [...info.capabilities] };
+  } catch (cause) {
+    throw new PaymentListError("AUTH", "Could not read the Pubky session", { cause });
+  } finally {
+    key?.free?.();
+    info?.free?.();
+  }
+}
+
+/**
+ * Whether `capabilities` allow writing `path`, by Pubky's scope rules: a scope
+ * ending in `/` covers everything inside that directory, and any other scope
+ * covers only that exact file.
+ */
+export function canWrite(capabilities: string[], path: string): boolean {
+  return capabilities.some((capability) => {
+    const separator = capability.lastIndexOf(":");
+    const scope = capability.slice(0, separator);
+    if (separator === -1 || !capability.slice(separator + 1).includes("w")) return false;
+    return scope.endsWith("/") ? path.startsWith(scope) : path === scope;
+  });
+}
+
+function isRefused(error: unknown): boolean {
+  const name = (error as { name?: unknown } | null | undefined)?.name;
+  const status = statusOf(error);
+  return status === 401 || status === 403 || name === "AuthenticationError" || name === "CredentialRefreshError";
+}
+
 async function publishPublic(
   storage: SessionStorage,
   publicStorage: PublicStorage,
   owner: string,
   apps: AppEndpoints[],
+  capabilities: string[],
 ): Promise<void> {
+  // Fail before any write when a scoped session cannot finish the job.
+  const requireWrite = (path: string): void => {
+    if (!canWrite(capabilities, path)) {
+      throw new PaymentListError("AUTH", "The session's capabilities do not cover the Paykit paths this list needs");
+    }
+  };
+  for (const { appId, endpoints } of apps) {
+    for (const { identifier } of endpoints) requireWrite(endpointPrefix(appId) + identifier);
+  }
+
   // Register Apps first so every endpoint written below is discoverable. A
   // malformed registry is never overwritten, and a concurrent change fails.
   const raw = await readText(publicStorage, address(owner, REGISTRY_PATH), MAX_DOCUMENT_BYTES);
   const registry = raw === null ? emptyRegistry() : parseRegistry(raw);
   if (registerMissingApps(registry, apps.map(({ appId }) => appId))) {
+    requireWrite(REGISTRY_PATH);
     await putIfUnchanged(storage, REGISTRY_PATH, serializeRegistry(registry), raw === null ? null : encoder.encode(raw), MAX_DOCUMENT_BYTES);
   }
 
@@ -78,12 +150,13 @@ async function publishPublic(
   };
   for (const { appId, endpoints } of apps) {
     const existing = await listIdentifiers(publicStorage, owner, appId, request, MAX_ENDPOINTS);
+    const kept = new Set(endpoints.map(({ identifier }) => identifier));
+    const stale = existing.filter((identifier) => !kept.has(identifier));
+    for (const identifier of stale) requireWrite(endpointPrefix(appId) + identifier);
     for (const { identifier, payload } of endpoints) {
       await withLock(storage, endpointPrefix(appId) + identifier, (lock) => storage.putTextLocked(lock, payload));
     }
-    const kept = new Set(endpoints.map(({ identifier }) => identifier));
-    for (const identifier of existing) {
-      if (kept.has(identifier)) continue;
+    for (const identifier of stale) {
       await withLock(storage, endpointPrefix(appId) + identifier, async (lock) => {
         try { await storage.deleteLocked(lock); } catch (cause) { if (!isMissing(cause)) throw cause; }
       });
@@ -123,7 +196,7 @@ async function withLock<T>(storage: SessionStorage, path: string, operation: (lo
       lock = await storage.lock(path as Path, LOCK_SECONDS);
     } catch (cause) {
       if (statusOf(cause) !== 423 || attempt >= LOCK_ATTEMPTS) {
-        throw new PaymentListError("TRANSPORT", "Could not lock a Paykit document for writing", { cause });
+        throw new PaymentListError(isRefused(cause) ? "AUTH" : "TRANSPORT", "Could not lock a Paykit document for writing", { cause });
       }
       await new Promise((resolve) => setTimeout(resolve, 50 * attempt));
     }
@@ -132,7 +205,7 @@ async function withLock<T>(storage: SessionStorage, path: string, operation: (lo
     return await operation(lock);
   } catch (cause) {
     if (cause instanceof PaymentListError) throw cause;
-    throw new PaymentListError("TRANSPORT", "Could not write a Paykit document", { cause });
+    throw new PaymentListError(isRefused(cause) ? "AUTH" : "TRANSPORT", "Could not write a Paykit document", { cause });
   } finally {
     try { await storage.unlock(lock); } catch { /* the lock expires on its own */ }
     lock.free();
