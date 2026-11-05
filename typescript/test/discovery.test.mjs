@@ -3,6 +3,7 @@ import { afterEach, beforeEach, test } from "node:test";
 import { readFileSync } from "node:fs";
 import { PublicStorage } from "@synonymdev/pubky";
 import { getPaymentList, PaymentListError } from "../dist/index.js";
+import { parseRegistry, serializeRegistry } from "../dist/registry.js";
 
 const fixture = JSON.parse(readFileSync(new URL("../../fixtures/discovery.json", import.meta.url), "utf8"));
 const owner = fixture.owner;
@@ -154,12 +155,22 @@ test("duplicate JSON keys, including escaped aliases, are rejected", async () =>
   }
 });
 
-test("registry Noise keys use the same Pubky identity aliases as Rust", async () => {
-  for (const key of [owner, `pubky${owner}`, `https://${owner}`]) {
-    setRegistry((registry) => { registry.noise_public_key = key; });
-    assert.equal((await getPaymentList(owner)).length, 4);
+test("registry Noise keys accept exactly the forms Paykit Library accepts", async () => {
+  assert.ok(fixture.noise_public_keys.cases.some(({ z32 }) => z32 === null));
+  for (const { value, z32 } of fixture.noise_public_keys.cases) {
+    setRegistry((registry) => { registry.noise_public_key = value; });
+    if (z32 === null) {
+      await assert.rejects(getPaymentList(owner), expectCode("INVALID_DATA"), JSON.stringify(value));
+      assert.throws(() => parseRegistry(documents.get(registryPath)), expectCode("INVALID_DATA"));
+    } else {
+      assert.equal((await getPaymentList(owner)).length, 4, JSON.stringify(value));
+      // Writes use the canonical key, as Paykit Library's serializer does.
+      const registry = parseRegistry(documents.get(registryPath));
+      assert.equal(registry.noiseKey, z32);
+      assert.ok(serializeRegistry(registry).includes(`"noise_public_key":"${z32}"`));
+    }
   }
-  setRegistry((registry) => { registry.noise_public_key = "invalid"; });
+  setRegistry((registry) => { registry.noise_public_key = 42; });
   await assert.rejects(getPaymentList(owner), expectCode("INVALID_DATA"));
 });
 

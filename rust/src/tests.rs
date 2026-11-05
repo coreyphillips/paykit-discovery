@@ -696,3 +696,23 @@ fn test_registry_writes_match_paykit_wire_vectors() {
         merge["expected"].as_str().unwrap()
     );
 }
+
+#[test]
+fn test_registry_noise_key_forms_match_shared_fixture() {
+    let fixture: Value =
+        serde_json::from_str(include_str!("../../fixtures/discovery.json")).unwrap();
+    for case in fixture["noise_public_keys"]["cases"].as_array().unwrap() {
+        let mut registry = fixture["registry"].clone();
+        registry["noise_public_key"] = case["value"].clone();
+        let parsed = parse_paykit_app_registry_json(&registry.to_string());
+        match case["z32"].as_str() {
+            Some(z32) => {
+                let parsed = parsed.unwrap_or_else(|error| panic!("{case}: {error}"));
+                assert_eq!(parsed.noise_public_key().unwrap().z32(), z32, "{case}");
+                let written = paykit_lib::serialize_paykit_app_registry(&parsed).unwrap();
+                assert!(written.contains(&format!("\"noise_public_key\":\"{z32}\"")));
+            }
+            None => assert!(parsed.is_err(), "{case}"),
+        }
+    }
+}
