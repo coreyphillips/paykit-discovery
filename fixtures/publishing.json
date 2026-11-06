@@ -46,6 +46,138 @@
       "expected": "{\"version\":1,\"kind\":\"paykit.app_registry\",\"key_generation\":18446744073709551615,\"noise_public_key\":\"5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo\",\"apps\":{\"bitkit\":{\"display_name\":\"Bitkit \\\"wallet\\\" \\\\ test\",\"capabilities\":{\"private_payments\":false,\"payment_requests\":false,\"receipts\":false,\"outgoing_payments\":true}},\"new-app\":{\"display_name\":\"new-app\",\"capabilities\":{\"private_payments\":false,\"payment_requests\":false,\"receipts\":false,\"outgoing_payments\":false}},\"savings\":{\"display_name\":\"Savings\",\"capabilities\":{\"private_payments\":false,\"payment_requests\":false,\"receipts\":true,\"outgoing_payments\":true}}},\"default_app_id\":\"bitkit\",\"default_apps_by_endpoint\":{\"btc-bitcoin-p2tr\":\"savings\",\"btc-lightning-bolt12\":\"bitkit\"}}"
     }
   },
+  "session_scopes": {
+    "description": "Whether a session's capabilities allow writing a path, by the rules of pubky-common Capability::scope_covers_path.",
+    "cases": [
+      {
+        "capabilities": [
+          "/:rw"
+        ],
+        "path": "/pub/paykit/v0/app-registry.json",
+        "can_write": true
+      },
+      {
+        "capabilities": [
+          "/:rw"
+        ],
+        "path": "/pub/paykit/v0/apps/my-wallet/endpoints/btc-bitcoin-p2tr",
+        "can_write": true
+      },
+      {
+        "capabilities": [
+          "/pub/paykit/:rw"
+        ],
+        "path": "/pub/paykit/v0/app-registry.json",
+        "can_write": true
+      },
+      {
+        "capabilities": [
+          "/pub/paykit/:rw"
+        ],
+        "path": "/pub/paykit/v0/apps/my-wallet/endpoints/btc-bitcoin-p2tr",
+        "can_write": true
+      },
+      {
+        "capabilities": [
+          "/pub/paykit/:w"
+        ],
+        "path": "/pub/paykit/v0/apps/my-wallet/endpoints/btc-bitcoin-p2tr",
+        "can_write": true
+      },
+      {
+        "capabilities": [
+          "/pub/paykit/:r"
+        ],
+        "path": "/pub/paykit/v0/apps/my-wallet/endpoints/btc-bitcoin-p2tr",
+        "can_write": false
+      },
+      {
+        "capabilities": [
+          "/pub/paykit/:e"
+        ],
+        "path": "/pub/paykit/v0/apps/my-wallet/endpoints/btc-bitcoin-p2tr",
+        "can_write": false
+      },
+      {
+        "capabilities": [
+          "/pub/paykit/:rwe"
+        ],
+        "path": "/pub/paykit/v0/apps/my-wallet/endpoints/btc-bitcoin-p2tr",
+        "can_write": true
+      },
+      {
+        "capabilities": [
+          "/pub/paykit-authority/:rw"
+        ],
+        "path": "/pub/paykit/v0/app-registry.json",
+        "can_write": false
+      },
+      {
+        "capabilities": [
+          "/pub/paykit:rw"
+        ],
+        "path": "/pub/paykit/v0/app-registry.json",
+        "can_write": false
+      },
+      {
+        "capabilities": [
+          "/pub/paykit/v0/app-registry.json:rw"
+        ],
+        "path": "/pub/paykit/v0/app-registry.json",
+        "can_write": true
+      },
+      {
+        "capabilities": [
+          "/pub/paykit/v0/app-registry.json:rw"
+        ],
+        "path": "/pub/paykit/v0/apps/my-wallet/endpoints/btc-bitcoin-p2tr",
+        "can_write": false
+      },
+      {
+        "capabilities": [
+          "/pub/paykit/v0/apps/my-wallet/:rw"
+        ],
+        "path": "/pub/paykit/v0/apps/my-wallet/endpoints/btc-bitcoin-p2tr",
+        "can_write": true
+      },
+      {
+        "capabilities": [
+          "/pub/paykit/v0/apps/my-wallet/:rw"
+        ],
+        "path": "/pub/paykit/v0/apps/other/endpoints/btc-bitcoin-p2tr",
+        "can_write": false
+      },
+      {
+        "capabilities": [
+          "/pub/paykit/v0/apps/my-wallet/:rw"
+        ],
+        "path": "/pub/paykit/v0/app-registry.json",
+        "can_write": false
+      },
+      {
+        "capabilities": [
+          "/pub/other/:rw",
+          "/pub/paykit/:r",
+          "/pub/paykit/v0/apps/my-wallet/:w"
+        ],
+        "path": "/pub/paykit/v0/apps/my-wallet/endpoints/btc-bitcoin-p2tr",
+        "can_write": true
+      },
+      {
+        "capabilities": [
+          "/pub/paykit/:r",
+          "/pub/paykit/v0/:w"
+        ],
+        "path": "/pub/paykit/v0/app-registry.json",
+        "can_write": true
+      },
+      {
+        "capabilities": [],
+        "path": "/pub/paykit/v0/apps/my-wallet/endpoints/btc-bitcoin-p2tr",
+        "can_write": false
+      }
+    ]
+  },
   "hierarchical_keys": {
     "source": "pubky-common 0.16.2 tests/fixtures/hierarchical-keys-v1.json (file paths only)",
     "identity_secret_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",

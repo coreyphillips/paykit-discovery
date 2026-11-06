@@ -63,6 +63,31 @@ type SetPaymentListResult =
   | { pubky: string; encrypted: true; access: string };
 ```
 
+### Publish without holding the secret
+
+A wallet that owns its identity can pass the mnemonic directly. An app that
+shouldn't hold it can ask a signer such as Pubky Ring for a scoped session and
+pass that instead. Add `@synonymdev/pubky` to your app for the auth flow:
+
+```ts
+import { AuthFlowKind, Pubky } from "@synonymdev/pubky";
+import { setPaymentList } from "@coreyphillips/paykit-discovery";
+
+const pubky = new Pubky();
+const flow = await pubky.startGrantAuthFlow("/pub/paykit/:rw", AuthFlowKind.signin(), {
+  clientId: "my-wallet.example",
+});
+// Show flow.authorizationUrl as a QR code or deep link for the signer to approve.
+const session = await flow.awaitApproval();
+
+await setPaymentList(session, details);
+```
+
+The session stays yours: this package never signs it out or frees it. Sessions
+work in public mode only, because the encrypted key derives from the identity
+secret. A narrower scope such as `/pub/paykit/v0/apps/my-wallet/:rw` also works
+once that App is in the App Registry.
+
 Use it in Node.js or a browser application with an ESM-capable bundler. Pubky's
 JavaScript SDK provides the underlying WebAssembly and public storage client.
 React Native is not a tested target for this package.
@@ -123,6 +148,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 ```
+
+Apps that shouldn't hold the secret can publish public endpoints with
+`set_payment_list_with_session(&session, &details)`. It borrows a `PubkySession`
+from `pubky =0.16.2` and never signs it out.
 
 These instructions install from this repository. The packages have not yet
 been published to npm or crates.io. Pin a Git commit in production for
@@ -205,6 +234,11 @@ them, so validate each payload for its identifier.
   phrase are normalized. The identity must already have a homeserver;
   publishing signs in (client ID `paykit-discovery`) and signs out afterward,
   but never signs up.
+- **Session:** instead of a secret, public mode accepts a Pubky session that
+  you created and keep. `/pub/paykit/:rw` covers everything. A narrower session
+  must be able to write each endpoint in the input, that App's endpoints being
+  removed, and the App Registry if an App has to be registered. A session that
+  can't cover the list fails before any endpoint is written.
 - **Input:** 1 to 256 records. App IDs use lowercase letters, digits, and `-`
   (1 to 64 characters); identifiers follow the Payment Endpoint Identifier
   rules; payloads are non-empty, at most 64 KiB each and 4 MiB in total; at
@@ -222,9 +256,11 @@ them, so validate each payload for its identifier.
   Every call creates a new document with its own path and key, so a merchant
   can hand each customer their own list without overlap.
 - **Errors:** TypeScript rejects with `INVALID_SECRET`, `INVALID_INPUT`,
-  `AUTH` (sign-in failed, for example no homeserver), `INVALID_DATA`,
-  `RESOURCE_LIMIT`, or `TRANSPORT` (failed writes and concurrent registry
-  changes). Rust returns the matching `Error` variants. A publish is not
+  `AUTH` (sign-in failed, for example no homeserver, or a session is
+  under-scoped, expired, or refused), `INVALID_DATA`, `RESOURCE_LIMIT`, or
+  `TRANSPORT` (other failed writes and concurrent registry changes). Rust
+  returns the matching `Error` variants, with `SessionScope` for an
+  under-scoped session. A publish is not
   atomic: after a failure some writes may have landed, and calling again with
   the same arguments is safe. No error message or cause includes the secret,
   mnemonic, or access key.
@@ -286,7 +322,9 @@ To read payment details, use `getPaymentList(pubky)` or
 `get_payment_list(pubky)`; never ask for a secret to read. To publish the
 user's own payment details, use `setPaymentList(secret, details, encrypted?)`
 or `set_payment_list(secret, details, encrypted)`, and only with a secret the
-user provides for that purpose. Never log, store, or display the secret or an
+user provides for that purpose. If the app shouldn't hold the secret, pass a
+scoped Pubky session in public mode instead, and leave that session to the
+caller. Never log, store, or display the secret or an
 access string beyond handing the access string to its intended recipient. Keep
 `appId`/`app_id` attached to the selected endpoint. Treat `payload` as receiving
 details for that `identifier`; interpret it with the wallet's existing payment

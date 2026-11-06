@@ -33,6 +33,21 @@ export interface PaymentEndpoint {
 }
 /** A BIP39 English mnemonic, a 64-character hex identity secret, or its 32 bytes. */
 export type PaymentSecret = string | Uint8Array;
+/**
+ * A Pubky SDK `Session`, for example from `flow.awaitApproval()`.
+ *
+ * Declared by shape so a session from your own copy of the SDK is accepted,
+ * even if it is a different version from the one this package installs.
+ */
+export interface PaymentSession {
+    readonly info: {
+        readonly capabilities: string[];
+        readonly publicKey: {
+            z32(): string;
+        };
+    };
+    readonly storage: object;
+}
 /** What `setPaymentList` published. `access` opens an encrypted list. */
 export type SetPaymentListResult = {
     pubky: string;

@@ -789,3 +789,55 @@ fn test_registry_noise_key_forms_match_shared_fixture() {
         }
     }
 }
+
+#[test]
+fn test_session_scope_rules_match_shared_fixture() {
+    let fixture = publishing_fixture();
+    for case in fixture["session_scopes"]["cases"].as_array().unwrap() {
+        let capabilities: Vec<pubky::Capability> = case["capabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|capability| capability.as_str().unwrap().parse().unwrap())
+            .collect();
+        assert_eq!(
+            publish::can_write(&capabilities, case["path"].as_str().unwrap()),
+            case["can_write"].as_bool().unwrap(),
+            "{case}"
+        );
+    }
+}
+
+#[test]
+fn test_refused_writes_are_auth_failures_and_others_stay_publish_failures() {
+    let refused = |code: u16| paykit_lib::PaykitError::Transport {
+        context: "put endpoint".into(),
+        source: pubky::Error::Request(pubky::errors::RequestError::Server {
+            status: pubky::StatusCode::from_u16(code).unwrap(),
+            message: "fixture".into(),
+        })
+        .into(),
+    };
+    for code in [401, 403] {
+        assert!(matches!(
+            publish::write_error(refused(code)),
+            Error::Auth(_)
+        ));
+    }
+    for code in [404, 412, 423, 500] {
+        let error = publish::write_error(refused(code));
+        assert!(
+            matches!(
+                error,
+                Error::Publish(paykit_lib::PaykitError::Transport { .. })
+            ),
+            "{code}"
+        );
+        // The original Pubky error stays reachable, for example for retry logic.
+        assert!(std::error::Error::source(&error).is_some());
+    }
+    assert!(matches!(
+        publish::write_error(paykit_lib::PaykitError::Validation("fixture".into())),
+        Error::Publish(paykit_lib::PaykitError::Validation(_))
+    ));
+}

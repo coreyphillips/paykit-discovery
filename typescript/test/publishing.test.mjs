@@ -5,6 +5,7 @@ import { PublicStorage, Signer } from "@synonymdev/pubky";
 import { getPaymentList, PaymentListError, setPaymentList } from "../dist/index.js";
 import { deriveKey, documentPath, formatAccess, open, parseAccess, parseDocument, seal, serializeDocument, toHex } from "../dist/encrypted.js";
 import { flattenEndpoints, validateEndpoints } from "../dist/endpoints.js";
+import { canWrite } from "../dist/publish.js";
 import { emptyRegistry, parseRegistry, registerMissingApps, serializeRegistry } from "../dist/registry.js";
 
 const fixture = JSON.parse(readFileSync(new URL("../../fixtures/publishing.json", import.meta.url), "utf8"));
@@ -123,7 +124,7 @@ test("a mnemonic, its hex secret, and its 32 bytes publish as the same pubky", a
 
 test("invalid secrets and input fail before any network access", async () => {
   const valid = [endpoint("bitkit", "btc", "x")];
-  for (const secret of [...fixture.invalid_secrets, new Uint8Array(31), new Uint8Array(33), 42, null, undefined, [1, 2]]) {
+  for (const secret of [...fixture.invalid_secrets, new Uint8Array(31), new Uint8Array(33), 42, null, undefined, [1, 2], {}, { storage: {} }, { info: {} }]) {
     await assert.rejects(setPaymentList(secret, valid), expectCode("INVALID_SECRET"));
   }
   const lone = "\ud800";
@@ -393,4 +394,123 @@ test("errors never reveal secrets, mnemonics, or access keys", async () => {
     for (let current = error; current; current = current.cause) messages.push(String(current), current.message ?? "", JSON.stringify(current) ?? "");
     for (const message of messages) for (const secret of forbidden) assert.ok(!message.includes(secret), message);
   }
+});
+
+// A session the caller owns, shaped like the SDK's. `info` and `storage` return
+// fresh handles on each read, as the real getters do.
+function callerSession(capabilities, pubky = owner) {
+  const handles = { freedHandles: 0, freedSession: 0 };
+  const release = { free() { handles.freedHandles++; } };
+  const session = {
+    get info() { return { capabilities, publicKey: { z32: () => pubky, ...release }, ...release }; },
+    get storage() { return Object.assign(fakeSession().storage, release); },
+    async signout() { signouts++; },
+    free() { handles.freedSession++; },
+  };
+  return { session, handles };
+}
+
+test("session scope checks match Pubky's rules", () => {
+  for (const { capabilities, path, can_write } of fixture.session_scopes.cases) {
+    assert.equal(canWrite(capabilities, path), can_write, JSON.stringify({ capabilities, path }));
+  }
+});
+
+test("a caller's session publishes without a secret and stays the caller's", async () => {
+  const { session, handles } = callerSession(["/pub/paykit/:rw"]);
+  const details = [endpoint("my-wallet", "btc-bitcoin-p2tr", "bc1p")];
+  assert.deepEqual(await setPaymentList(session, details), { pubky: owner, encrypted: false });
+  assert.deepEqual(await getPaymentList(owner), details);
+  assert.equal(text(registryPath), serializeRegistry((() => {
+    const registry = emptyRegistry();
+    registerMissingApps(registry, ["my-wallet"]);
+    return registry;
+  })()));
+  assert.deepEqual(signins, [], "no sign-in happens");
+  assert.equal(signouts, 0, "the caller's session is not signed out");
+  assert.equal(handles.freedSession, 0, "the caller's session is not freed");
+  assert.ok(handles.freedHandles > 0, "handles read from the session are released");
+  assert.equal(locks.size, 0);
+
+  await setPaymentList(session, [endpoint("my-wallet", "btc-bitcoin-p2tr", "bc1p-second")]);
+  assert.equal(text(endpointPath("my-wallet", "btc-bitcoin-p2tr")), "bc1p-second", "the session stays usable");
+});
+
+test("a session publishes as its own identity, not a default one", async () => {
+  const other = fixture.secrets[1].pubky;
+  const { session } = callerSession(["/:rw"], other);
+  assert.equal((await setPaymentList(session, [endpoint("bitkit", "btc", "x")])).pubky, other);
+});
+
+test("a session limited to one App works once that App is registered", async () => {
+  const { session } = callerSession(["/pub/paykit/v0/apps/my-wallet/:rw"]);
+  const details = [endpoint("my-wallet", "btc", "x")];
+  await assert.rejects(setPaymentList(session, details), expectCode("AUTH"));
+  assert.ok(!calls.some(([kind]) => kind === "lock" || kind === "put"), "nothing is written");
+
+  const registry = emptyRegistry();
+  registerMissingApps(registry, ["my-wallet"]);
+  files.set(registryPath, encoder.encode(serializeRegistry(registry)));
+  await setPaymentList(session, details);
+  assert.equal(text(endpointPath("my-wallet", "btc")), "x");
+  assert.ok(!calls.some(([kind, path]) => kind === "lock" && path === registryPath), "the registry is left alone");
+});
+
+test("an under-scoped session fails before any write or network access", async () => {
+  for (const capabilities of [[], ["/pub/paykit/:r"], ["/pub/paykit-authority/:rw"], ["/pub/other/:rw"]]) {
+    const { session } = callerSession(capabilities);
+    await assert.rejects(setPaymentList(session, [endpoint("my-wallet", "btc", "x")]), expectCode("AUTH"));
+  }
+  assert.equal(network(), 0);
+  const { session } = callerSession(["/pub/paykit/v0/apps/first/:rw", "/pub/paykit/v0/app-registry.json:rw"]);
+  await assert.rejects(setPaymentList(session, [endpoint("first", "btc", "x"), endpoint("second", "btc", "y")]), expectCode("AUTH"));
+  assert.equal(files.size, 0, "a list the session cannot finish writes nothing");
+});
+
+test("a session that cannot remove a stale endpoint fails before changing that App", async () => {
+  const registry = emptyRegistry();
+  registerMissingApps(registry, ["my-wallet"]);
+  files.set(registryPath, encoder.encode(serializeRegistry(registry)));
+  files.set(endpointPath("my-wallet", "stale"), encoder.encode("old"));
+  files.set(endpointPath("my-wallet", "kept"), encoder.encode("old"));
+  const { session } = callerSession([`${endpointPath("my-wallet", "kept")}:rw`]);
+  await assert.rejects(setPaymentList(session, [endpoint("my-wallet", "kept", "new")]), expectCode("AUTH"));
+  assert.equal(text(endpointPath("my-wallet", "kept")), "old");
+  assert.equal(text(endpointPath("my-wallet", "stale")), "old");
+});
+
+test("encrypted mode and invalid details are rejected for sessions before network access", async () => {
+  const { session } = callerSession(["/:rw"]);
+  await assert.rejects(setPaymentList(session, [endpoint("bitkit", "btc", "x")], true), expectCode("INVALID_INPUT"));
+  await assert.rejects(setPaymentList(session, [endpoint("bitkit", "btc", "x")], "yes"), expectCode("INVALID_INPUT"));
+  await assert.rejects(setPaymentList(session, []), expectCode("INVALID_INPUT"));
+  await assert.rejects(setPaymentList(session, [endpoint("Bad", "btc", "x")]), expectCode("INVALID_INPUT"));
+  assert.equal(network(), 0);
+});
+
+test("a session the homeserver refuses rejects with AUTH, other failures with TRANSPORT", async () => {
+  const { session } = callerSession(["/pub/paykit/:rw"]);
+  const details = [endpoint("bitkit", "btc", "x")];
+  for (const refusal of [
+    requestError(401),
+    requestError(403),
+    Object.assign(new Error("expired"), { name: "CredentialRefreshError", data: { statusCode: 401 } }),
+    Object.assign(new Error("bad token"), { name: "AuthenticationError" }),
+  ]) {
+    hooks.put = async () => { throw refusal; };
+    await assert.rejects(setPaymentList(session, details), expectCode("AUTH"));
+    hooks.put = undefined;
+    hooks.lock = async () => { throw refusal; };
+    await assert.rejects(setPaymentList(session, details), expectCode("AUTH"));
+    hooks.lock = undefined;
+  }
+  hooks.put = async () => { throw requestError(500); };
+  await assert.rejects(setPaymentList(session, details), expectCode("TRANSPORT"));
+  assert.equal(signouts, 0);
+});
+
+test("an unreadable session rejects with AUTH", async () => {
+  const session = { get info() { throw new Error("null pointer passed to rust"); }, storage: {} };
+  await assert.rejects(setPaymentList(session, [endpoint("bitkit", "btc", "x")]), expectCode("AUTH"));
+  assert.equal(network(), 0);
 });

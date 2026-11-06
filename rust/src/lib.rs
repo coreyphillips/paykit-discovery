@@ -5,6 +5,8 @@
 //! publishes a Payment List from the identity's BIP39 mnemonic or hex secret,
 //! either as public Paykit endpoints or as one encrypted document that
 //! [`get_encrypted_payment_list`] opens with the returned access string.
+//! Apps that should not hold the secret can publish public endpoints with a
+//! scoped Pubky session and [`set_payment_list_with_session`].
 //!
 //! The wallet interprets and validates each opaque payload before paying it.
 //! This crate does not handle Paykit Private Payment Lists or execute payments.
@@ -16,6 +18,9 @@ use std::collections::{HashMap, HashSet};
 
 use paykit_lib::{PaykitAppId, PaykitAppRegistry, PaymentEndpointIdentifier, PaymentList};
 use pubky::{PubkyResource, PublicKey, PublicStorage};
+
+/// The session type [`set_payment_list_with_session`] accepts.
+pub use pubky::PubkySession;
 
 mod encrypted;
 pub mod identifiers;
@@ -59,9 +64,13 @@ pub enum Error {
     /// The Payment Endpoints or the access string are invalid.
     #[error("invalid input: {0}")]
     InvalidInput(&'static str),
-    /// Signing in failed, for example because the identity has no homeserver.
-    #[error("could not sign in to the identity's homeserver: {0}")]
+    /// Signing in failed, for example because the identity has no homeserver, or
+    /// the homeserver refused a write because the session expired or was revoked.
+    #[error("the identity's homeserver refused the session: {0}")]
     Auth(#[source] pubky::Error),
+    /// The session's capabilities do not cover a path this list has to write.
+    #[error("the session's capabilities do not cover the Paykit paths this list needs")]
+    SessionScope,
     /// Reading the current state or writing the Payment List failed.
     ///
     /// A concurrent App Registry change also lands here; read again and retry.
@@ -233,6 +242,37 @@ pub async fn set_payment_list(
     };
     let pubky = pubky::Pubky::new().map_err(Error::Client)?;
     publish::publish(&pubky, &secret, &list, document.as_deref()).await
+}
+
+/// Publish a Payment List in public mode with an existing Pubky session.
+///
+/// This does what [`set_payment_list`] does with `encrypted == false`, for apps
+/// that should not hold the identity secret. The session identifies the owner,
+/// usually from a Pubky Ring approval. Request `/pub/paykit/:rw` for that flow.
+/// A narrower scope works when it covers every path this call writes: each
+/// endpoint in `endpoints`, that App's endpoints it removes, and
+/// `/pub/paykit/v0/app-registry.json` if an App has to be registered.
+///
+/// The session stays yours. It is borrowed and never signed out. Encrypted mode
+/// is not available here, because its key derives from the identity secret.
+/// The session must come from `pubky =0.16.2`, the version this crate uses.
+/// Run this inside a Tokio runtime.
+///
+/// # Errors
+///
+/// Returns [`Error::InvalidInput`] before any network access for invalid
+/// endpoints, and [`Error::SessionScope`] before any endpoint is written when
+/// the session cannot cover the list. A session the homeserver refuses returns
+/// [`Error::Auth`]. Other failed reads and writes return [`Error::Publish`].
+/// The call is not atomic: after an error some writes may have landed, and
+/// calling again with the same arguments is safe.
+pub async fn set_payment_list_with_session(
+    session: &PubkySession,
+    endpoints: &[PaymentEndpoint],
+) -> Result<PublishedPaymentList, Error> {
+    let list = publish::validate_endpoints(endpoints).map_err(Error::InvalidInput)?;
+    let storage = pubky::PublicStorage::new().map_err(Error::Client)?;
+    publish::publish_with_session(session, &storage, &list).await
 }
 
 /// Open an encrypted Payment List published by [`set_payment_list`].
