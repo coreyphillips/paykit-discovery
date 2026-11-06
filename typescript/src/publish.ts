@@ -1,11 +1,12 @@
 import {
-  Keypair, Pubky, PublicStorage, type Path, type Session, type SessionStorage, type Signer, type StorageLock,
+  Keypair, Pubky, PublicStorage, type Path, type PublicKey, type Session, type SessionStorage, type Signer, type StorageLock,
 } from "@synonymdev/pubky";
 import { MAX_DOCUMENT_BYTES, MAX_ENDPOINTS, type AppEndpoints, type SetPaymentListResult } from "./endpoints.js";
 import { deriveKey, documentPath, formatAccess, MAX_SEALED_BYTES, newDocumentId, seal } from "./encrypted.js";
 import { PaymentListError } from "./errors.js";
 import { address, endpointPrefix, isMissing, listIdentifiers, readBytes, readText, statusOf } from "./io.js";
 import { emptyRegistry, parseRegistry, registerMissingApps, serializeRegistry } from "./registry.js";
+import { ensureHomeserver } from "./signup.js";
 
 /** Shown in the identity's session list on its homeserver. */
 const CLIENT_ID = "paykit-discovery";
@@ -17,7 +18,8 @@ const LOCK_ATTEMPTS = 8;
 const encoder = new TextEncoder();
 
 /**
- * Sign in as the identity and publish an already validated list.
+ * Sign in as the identity and publish an already validated list, signing the
+ * identity up first when it has no homeserver record.
  * `document` is the serialized plaintext for encrypted mode.
  */
 export async function publish(
@@ -27,17 +29,18 @@ export async function publish(
 ): Promise<SetPaymentListResult> {
   let pubky: Pubky | undefined;
   let keypair: Keypair | undefined;
+  let ownerKey: PublicKey | undefined;
   let signer: Signer | undefined;
   let session: Session | undefined;
   let storage: SessionStorage | undefined;
   let publicStorage: PublicStorage | undefined;
   try {
     keypair = Keypair.fromSecret(secret);
-    const ownerKey = keypair.publicKey;
+    ownerKey = keypair.publicKey;
     const owner = ownerKey.z32();
-    ownerKey.free();
     pubky = new Pubky();
     signer = pubky.signer(keypair);
+    await ensureHomeserver(pubky, signer, ownerKey);
     try { session = await signer.signin(CLIENT_ID); }
     catch (cause) { throw new PaymentListError("AUTH", "Could not sign in to the identity's homeserver", { cause }); }
     storage = session.storage;
@@ -53,7 +56,7 @@ export async function publish(
   } finally {
     // A failed sign-out leaves the session to expire; it never changes the result.
     if (session) { try { await session.signout(); } catch { /* best effort */ } }
-    for (const owned of [publicStorage, storage, session, signer, keypair, pubky]) owned?.free();
+    for (const owned of [publicStorage, storage, session, signer, ownerKey, keypair, pubky]) owned?.free();
   }
 }
 

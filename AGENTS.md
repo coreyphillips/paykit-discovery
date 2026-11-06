@@ -38,8 +38,14 @@ the integration small: in TypeScript, `getPaymentList(pubky, access?)` and
 - Rust uses the canonical `paykit-lib` APIs and `pubky-common` key derivation.
   TypeScript uses the official `@synonymdev/pubky` SDK, WebCrypto, and
   `@scure/bip39`, and follows the same Paykit wire format.
+- Publishing signs an identity up through Homegate only when no homeserver
+  record for it can be found. Signing up force-publishes that record and can
+  point an identity away from its data, so decide from the record, never from
+  a failed sign-in, which does not show that no account exists. A lookup reports
+  an expired record as not found, so also check relay caches, and treat a failed
+  lookup as an error. An identity with a record goes on to sign-in unchanged.
 - Do not add alternate network backends, private messaging, payment execution,
-  signup, or wallet-specific payload interpretation to this package.
+  or wallet-specific payload interpretation to this package.
 - Keep package examples runnable and distinguish GitHub installation from
   unpublished npm/crates.io packages.
 - Commit generated `typescript/dist` files with their source changes. GitHub

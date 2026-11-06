@@ -4,7 +4,8 @@
 //! session, private key, or Paykit SDK configuration. [`set_payment_list`]
 //! publishes a Payment List from the identity's BIP39 mnemonic or hex secret,
 //! either as public Paykit endpoints or as one encrypted document that
-//! [`get_encrypted_payment_list`] opens with the returned access string.
+//! [`get_encrypted_payment_list`] opens with the returned access string. An
+//! identity with no homeserver is signed up automatically on its first publish.
 //!
 //! The wallet interprets and validates each opaque payload before paying it.
 //! This crate does not handle Paykit Private Payment Lists or execute payments.
@@ -21,6 +22,7 @@ mod encrypted;
 pub mod identifiers;
 mod publish;
 mod secret;
+mod signup;
 
 const MAX_ENDPOINTS: usize = 256;
 const MAX_PAYLOAD_BYTES: usize = 4 * 1024 * 1024;
@@ -62,6 +64,15 @@ pub enum Error {
     /// Signing in failed, for example because the identity has no homeserver.
     #[error("could not sign in to the identity's homeserver: {0}")]
     Auth(#[source] pubky::Error),
+    /// Looking up the identity's homeserver record or signing up failed.
+    #[error("could not sign up the identity: {0}")]
+    SignUp(#[source] pubky::Error),
+    /// Homegate refused a signup code because this IP address reached its limit.
+    #[error("Homegate's signup limit for this IP address has been reached")]
+    SignUpRateLimited,
+    /// Homegate could not be reached or returned an unusable response.
+    #[error("could not get a signup code from Homegate: {0}")]
+    Homegate(String),
     /// Reading the current state or writing the Payment List failed.
     ///
     /// A concurrent App Registry change also lands here; read again and retry.
@@ -170,8 +181,12 @@ pub struct PublishedPaymentList {
 /// `secret` is a BIP39 English mnemonic or the 32-byte identity secret as
 /// 64 hex characters. A mnemonic resolves the way Pubky Ring does: the first
 /// 32 bytes of its BIP39 seed (no passphrase) are the identity secret.
-/// Whitespace and letter case in the phrase are normalized. The identity must
-/// already have a homeserver; this function signs in but never signs up.
+/// Whitespace and letter case in the phrase are normalized.
+///
+/// An identity with no homeserver record is signed up first through Homegate,
+/// so a new mnemonic works with no invite code. Homegate limits signup codes
+/// per IP address, by default to 2 a week and 4 a year. An identity with a
+/// record, even an expired one, is never signed up.
 ///
 /// With `encrypted == false`, every App in `endpoints` is added to the Paykit
 /// App Registry if missing, each endpoint is written to its public Paykit path,
@@ -195,9 +210,10 @@ pub struct PublishedPaymentList {
 ///
 /// Returns [`Error::InvalidSecret`] or [`Error::InvalidInput`] before any
 /// network access. Sign-in failures return [`Error::Auth`], and failed reads,
-/// writes, or a concurrent App Registry change return [`Error::Publish`]. The
-/// call is not atomic: after an error some writes may have landed, and calling
-/// again with the same arguments is safe.
+/// writes, or a concurrent App Registry change return [`Error::Publish`]. Signup
+/// failures return [`Error::SignUp`], [`Error::SignUpRateLimited`], or
+/// [`Error::Homegate`]. The call is not atomic: after an error some writes may
+/// have landed, and calling again with the same arguments is safe.
 ///
 /// # Examples
 ///

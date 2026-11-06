@@ -10,7 +10,8 @@ use pubky::{ClientId, Keypair, Pubky, PubkySession, PublicKey, PublicStorage};
 use zeroize::Zeroizing;
 
 use crate::{
-    encrypted, Error, PaymentEndpoint, PublishedPaymentList, MAX_ENDPOINTS, MAX_PAYLOAD_BYTES,
+    encrypted, signup, Error, PaymentEndpoint, PublishedPaymentList, MAX_ENDPOINTS,
+    MAX_PAYLOAD_BYTES,
 };
 
 /// Shown in the identity's session list on its homeserver.
@@ -129,7 +130,8 @@ pub(crate) fn register_missing_apps(
     Ok(!missing.is_empty())
 }
 
-/// Sign in as the identity and publish an already validated list.
+/// Sign in as the identity and publish an already validated list, signing the
+/// identity up first when it has no homeserver record.
 ///
 /// `document` is the serialized plaintext for encrypted mode, or `None` for
 /// public mode. The session is signed out afterward on a best-effort basis.
@@ -142,11 +144,9 @@ pub(crate) async fn publish(
     let keypair = Keypair::from_secret(secret);
     let owner = keypair.public_key();
     let client_id = ClientId::new(CLIENT_ID).expect("the static client ID is valid");
-    let session = pubky
-        .signer(keypair)
-        .signin(client_id)
-        .await
-        .map_err(Error::Auth)?;
+    let signer = pubky.signer(keypair);
+    signup::ensure_homeserver(pubky, &signer, &owner).await?;
+    let session = signer.signin(client_id).await.map_err(Error::Auth)?;
     let result = match document {
         Some(document) => publish_encrypted(&session, secret, &owner, document)
             .await

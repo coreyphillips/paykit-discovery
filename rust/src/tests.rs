@@ -789,3 +789,49 @@ fn test_registry_noise_key_forms_match_shared_fixture() {
         }
     }
 }
+
+const HOMESERVER: &str = "5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo";
+
+fn homegate_body(signup_code: &str, homeserver: &str) -> String {
+    json!({ "signupCode": signup_code, "homeserverPubky": homeserver }).to_string()
+}
+
+#[test]
+fn test_signup_code_accepts_homegate_response() {
+    let body = homegate_body("FAKE-CODE", HOMESERVER);
+    let parsed = signup::parse_signup_code(pubky::StatusCode::OK, &body).unwrap();
+    assert_eq!(parsed.code, "FAKE-CODE");
+    assert_eq!(parsed.homeserver.z32(), HOMESERVER);
+}
+
+#[test]
+fn test_signup_code_rate_limit_has_its_own_error() {
+    let result = signup::parse_signup_code(pubky::StatusCode::TOO_MANY_REQUESTS, "limit");
+    assert!(matches!(result, Err(Error::SignUpRateLimited)));
+}
+
+#[test]
+fn test_signup_code_server_errors_are_homegate_errors() {
+    let result = signup::parse_signup_code(pubky::StatusCode::INTERNAL_SERVER_ERROR, "down");
+    assert!(matches!(result, Err(Error::Homegate(_))));
+}
+
+#[test]
+fn test_signup_code_rejects_invalid_responses_without_quoting_them() {
+    for body in [
+        "not json".to_owned(),
+        "null".to_owned(),
+        "[]".to_owned(),
+        json!({ "signupCode": "FAKE-CODE" }).to_string(),
+        json!({ "homeserverPubky": HOMESERVER }).to_string(),
+        homegate_body("", HOMESERVER),
+        homegate_body("FAKE-CODE", "not-a-key"),
+        homegate_body("FAKE-CODE", &format!("pubky://{HOMESERVER}")),
+    ] {
+        let Err(error) = signup::parse_signup_code(pubky::StatusCode::OK, &body) else {
+            panic!("accepted {body}");
+        };
+        assert!(matches!(error, Error::Homegate(_)), "{body}");
+        assert!(!error.to_string().contains("FAKE-CODE"), "{body}");
+    }
+}

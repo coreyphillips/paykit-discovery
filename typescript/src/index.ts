@@ -82,8 +82,12 @@ export async function getPaymentList(pubky: string, access?: string): Promise<Pa
  * `secret` is a BIP39 English mnemonic, the 32-byte identity secret as 64 hex
  * characters, or those 32 bytes. A mnemonic resolves the way Pubky Ring does:
  * the first 32 bytes of its BIP39 seed (no passphrase) are the identity secret.
- * Whitespace and letter case in the phrase are normalized. The identity must
- * already have a homeserver; this function signs in but never signs up.
+ * Whitespace and letter case in the phrase are normalized.
+ *
+ * An identity with no homeserver record is signed up first through Homegate, so
+ * a new mnemonic works with no invite code. Homegate limits signup codes per IP
+ * address, by default to 2 a week and 4 a year. An identity with a record, even
+ * an expired one, is never signed up.
  *
  * Public mode (`encrypted` omitted or `false`) adds every App in
  * `paymentDetails` to the Paykit App Registry if missing, writes each endpoint
@@ -105,8 +109,9 @@ export async function getPaymentList(pubky: string, access?: string): Promise<Pa
  * no repeated App ID and identifier pair.
  *
  * Invalid secrets and input reject with `INVALID_SECRET` or `INVALID_INPUT`
- * before any network access. Sign-in failures reject with `AUTH`; failed writes
- * and concurrent App Registry changes reject with `TRANSPORT`. The call is not
+ * before any network access. Sign-in failures and refused signups reject with
+ * `AUTH`, and Homegate's limit with `RATE_LIMITED`; failed writes and
+ * concurrent App Registry changes reject with `TRANSPORT`. The call is not
  * atomic: after a rejection some writes may have landed, and calling again
  * with the same arguments is safe. Errors never include the secret.
  */
