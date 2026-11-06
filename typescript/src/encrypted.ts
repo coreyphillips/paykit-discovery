@@ -175,14 +175,14 @@ export async function open(
   }
 }
 
-/** Read, authenticate, and parse one encrypted document. Absence is `[]`. */
+/** Read, authenticate, and parse one encrypted document. Absence is `NOT_FOUND`. */
 export async function readEncrypted(owner: string, access: Access): Promise<PaymentEndpoint[]> {
   const path = documentPath(access.id);
   let storage: PublicStorage | undefined;
   try {
     storage = new PublicStorage();
     const sealed = await readBytes(() => storage!.get(address(owner, path)), MAX_SEALED_BYTES);
-    if (sealed === null) return [];
+    if (sealed === null) throw new PaymentListError("NOT_FOUND", "The encrypted Payment List was not found");
     const plaintext = await open(access.key, owner, path, sealed);
     try { return parseDocument(plaintext); } finally { plaintext.fill(0); }
   } catch (cause) {

@@ -18,6 +18,7 @@ use paykit_lib::{PaykitAppId, PaykitAppRegistry, PaymentEndpointIdentifier, Paym
 use pubky::{PubkyResource, PublicKey, PublicStorage};
 
 mod encrypted;
+pub mod identifiers;
 mod publish;
 mod secret;
 
@@ -36,6 +37,8 @@ pub struct PaymentEndpoint {
     /// Paykit App that published these receiving details, for example `bitkit`.
     pub app_id: String,
     /// Payment Endpoint Identifier, for example `btc-lightning-bolt12`.
+    ///
+    /// [`identifiers`] names common values. Any valid identifier is allowed.
     pub identifier: String,
     /// Opaque UTF-8 receiving details. The wallet must validate this payload.
     pub payload: String,
@@ -70,6 +73,11 @@ pub enum Error {
     /// Public discovery failed, returned invalid data, or exceeded resource limits.
     #[error("could not retrieve the Payment List: {0}")]
     Discovery(#[from] paykit_lib::PaykitError),
+    /// No document exists for this encrypted access string.
+    ///
+    /// It was deleted, or the homeserver is withholding it.
+    #[error("the encrypted Payment List was not found")]
+    NotFound,
     /// The lookup exceeded its endpoint, request, or payload budget.
     #[error("Payment List exceeds the discovery resource limits")]
     ResourceLimit,
@@ -194,13 +202,15 @@ pub struct PublishedPaymentList {
 /// # Examples
 ///
 /// ```no_run
-/// use paykit_discovery::{get_encrypted_payment_list, set_payment_list, PaymentEndpoint};
+/// use paykit_discovery::{
+///     get_encrypted_payment_list, identifiers, set_payment_list, PaymentEndpoint,
+/// };
 ///
 /// # async fn example(mnemonic: &str) -> Result<(), paykit_discovery::Error> {
 /// let endpoints = [PaymentEndpoint {
 ///     app_id: "my-wallet".into(),
-///     identifier: "btc-lightning-bolt11".into(),
-///     payload: "lnbc1...".into(),
+///     identifier: identifiers::BTC_LIGHTNING_BOLT11.into(),
+///     payload: r#"{"value":"lnbc1..."}"#.into(),
 /// }];
 /// let published = set_payment_list(mnemonic, &endpoints, true).await?;
 /// let access = published.access.expect("encrypted mode returns an access string");
@@ -228,16 +238,17 @@ pub async fn set_payment_list(
 /// Open an encrypted Payment List published by [`set_payment_list`].
 ///
 /// `pubky` accepts the same forms as [`get_payment_list`]. `access` is the
-/// string returned by the encrypted publish. No login is needed. A missing
-/// document returns an empty vector. Endpoints are sorted by App ID and
-/// identifier. Run this inside a Tokio runtime.
+/// string returned by the encrypted publish. No login is needed. Endpoints are
+/// sorted by App ID and identifier. Run this inside a Tokio runtime.
 ///
 /// # Errors
 ///
 /// Returns [`Error::InvalidPubky`] or [`Error::InvalidInput`] before any
-/// network access. A wrong access string, a document moved to another path or
-/// identity, tampering, or a malformed document returns [`Error::Discovery`]
-/// with invalid data. Transport failures and oversized documents also fail.
+/// network access. A missing document returns [`Error::NotFound`], because an
+/// access string means a list should exist. A wrong access string, a document
+/// moved to another path or identity, tampering, or a malformed document returns
+/// [`Error::Discovery`] with invalid data. Transport failures and oversized
+/// documents also fail.
 pub async fn get_encrypted_payment_list(
     pubky: &str,
     access: &str,

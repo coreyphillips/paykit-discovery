@@ -158,7 +158,7 @@ export async function open(key, owner, path, sealed) {
         throw new PaymentListError("INVALID_DATA", "The encrypted Payment List could not be authenticated with this access string");
     }
 }
-/** Read, authenticate, and parse one encrypted document. Absence is `[]`. */
+/** Read, authenticate, and parse one encrypted document. Absence is `NOT_FOUND`. */
 export async function readEncrypted(owner, access) {
     const path = documentPath(access.id);
     let storage;
@@ -166,7 +166,7 @@ export async function readEncrypted(owner, access) {
         storage = new PublicStorage();
         const sealed = await readBytes(() => storage.get(address(owner, path)), MAX_SEALED_BYTES);
         if (sealed === null)
-            return [];
+            throw new PaymentListError("NOT_FOUND", "The encrypted Payment List was not found");
         const plaintext = await open(access.key, owner, path, sealed);
         try {
             return parseDocument(plaintext);

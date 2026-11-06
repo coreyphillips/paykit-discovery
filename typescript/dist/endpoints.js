@@ -1,4 +1,23 @@
 import { PaymentListError } from "./errors.js";
+/**
+ * Common Payment Endpoint Identifiers from Paykit's naming convention.
+ *
+ * These are a convenience, not a limit. Identifiers are open strings: new ones
+ * appear by being published, and any valid identifier can be read or published.
+ * Keep this list equal to `known_identifiers` in `fixtures/discovery.json`.
+ */
+export const Identifier = {
+    BtcBitcoinP2tr: "btc-bitcoin-p2tr",
+    BtcBitcoinP2wpkh: "btc-bitcoin-p2wpkh",
+    BtcLightningBolt11: "btc-lightning-bolt11",
+    BtcLightningBolt12: "btc-lightning-bolt12",
+    EurSepaIban: "eur-sepa-iban",
+    GbpFpsSortcode: "gbp-fps-sortcode",
+    UsdRevolutTag: "usd-revolut-tag",
+    UsdcSolanaAddress: "usdc-solana-address",
+    UsdtEthereumAddress: "usdt-ethereum-address",
+    UsdtTronAddress: "usdt-tron-address",
+};
 export const MAX_DOCUMENT_BYTES = 64 * 1024;
 export const MAX_ENDPOINTS = 256;
 export const MAX_APPS = 64;

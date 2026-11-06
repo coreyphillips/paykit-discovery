@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 import { readFileSync } from "node:fs";
 import { PublicStorage } from "@synonymdev/pubky";
-import { getPaymentList, PaymentListError } from "../dist/index.js";
+import { getPaymentList, Identifier, PaymentListError } from "../dist/index.js";
+import { isIdentifier } from "../dist/endpoints.js";
 import { parseRegistry, serializeRegistry } from "../dist/registry.js";
 
 const fixture = JSON.parse(readFileSync(new URL("../../fixtures/discovery.json", import.meta.url), "utf8"));
@@ -48,6 +49,16 @@ afterEach(() => {
 function expectCode(code) {
   return (error) => error instanceof PaymentListError && error.code === code;
 }
+
+test("known identifiers match the shared fixture and Paykit's naming convention", () => {
+  const values = Object.values(Identifier);
+  assert.deepEqual(values, fixture.known_identifiers);
+  for (const value of values) {
+    assert.ok(isIdentifier(value), value);
+    assert.match(value, /^[a-z0-9]+-[a-z0-9]+-[a-z0-9]+$/);
+  }
+});
+
 function setRegistry(update) {
   const registry = structuredClone(fixture.registry);
   update(registry);

@@ -72,6 +72,18 @@
       "payload": "fixture:savings:bolt12"
     }
   ],
+  "known_identifiers": [
+    "btc-bitcoin-p2tr",
+    "btc-bitcoin-p2wpkh",
+    "btc-lightning-bolt11",
+    "btc-lightning-bolt12",
+    "eur-sepa-iban",
+    "gbp-fps-sortcode",
+    "usd-revolut-tag",
+    "usdc-solana-address",
+    "usdt-ethereum-address",
+    "usdt-tron-address"
+  ],
   "noise_public_keys": {
     "description": "Registry noise_public_key forms with the result of paykit-lib 0.1.0 parse_paykit_app_registry_json: the canonical z32 it accepts, or null when it rejects the registry. Generated from Rust; both suites must agree.",
     "cases": [

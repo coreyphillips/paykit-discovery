@@ -1,6 +1,7 @@
 import { type PaymentEndpoint, type PaymentSecret, type SetPaymentListResult } from "./endpoints.js";
 export { PaymentListError, type PaymentListErrorCode } from "./errors.js";
-export type { PaymentEndpoint, PaymentSecret, SetPaymentListResult } from "./endpoints.js";
+export { Identifier } from "./endpoints.js";
+export type { KnownIdentifier, PaymentEndpoint, PaymentIdentifier, PaymentSecret, SetPaymentListResult } from "./endpoints.js";
 /**
  * Discover all registered Apps' public Payment Endpoints for a Pubky identity.
  *
@@ -13,8 +14,9 @@ export type { PaymentEndpoint, PaymentSecret, SetPaymentListResult } from "./end
  *
  * With `access`, the string returned by an encrypted `setPaymentList`, this
  * instead opens that one encrypted Payment List and returns only its records,
- * sorted by App ID and identifier. A missing document returns `[]`; a wrong
- * access string or a tampered or moved document rejects with `INVALID_DATA`.
+ * sorted by App ID and identifier. A missing document rejects with `NOT_FOUND`,
+ * because an access string means a list should exist. A wrong access string or
+ * a tampered or moved document rejects with `INVALID_DATA`.
  */
 export declare function getPaymentList(pubky: string, access?: string): Promise<PaymentEndpoint[]>;
 /**

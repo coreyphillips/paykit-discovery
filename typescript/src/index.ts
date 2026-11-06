@@ -10,7 +10,8 @@ import { publish } from "./publish.js";
 import { parseRegistry } from "./registry.js";
 import { parseSecret } from "./secret.js";
 export { PaymentListError, type PaymentListErrorCode } from "./errors.js";
-export type { PaymentEndpoint, PaymentSecret, SetPaymentListResult } from "./endpoints.js";
+export { Identifier } from "./endpoints.js";
+export type { KnownIdentifier, PaymentEndpoint, PaymentIdentifier, PaymentSecret, SetPaymentListResult } from "./endpoints.js";
 
 const REGISTRY_PATH = "/pub/paykit/v0/app-registry.json";
 const MAX_REQUESTS = 512;
@@ -27,8 +28,9 @@ const MAX_REQUESTS = 512;
  *
  * With `access`, the string returned by an encrypted `setPaymentList`, this
  * instead opens that one encrypted Payment List and returns only its records,
- * sorted by App ID and identifier. A missing document returns `[]`; a wrong
- * access string or a tampered or moved document rejects with `INVALID_DATA`.
+ * sorted by App ID and identifier. A missing document rejects with `NOT_FOUND`,
+ * because an access string means a list should exist. A wrong access string or
+ * a tampered or moved document rejects with `INVALID_DATA`.
  */
 export async function getPaymentList(pubky: string, access?: string): Promise<PaymentEndpoint[]> {
   const owner = normalizePubky(pubky);

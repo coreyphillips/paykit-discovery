@@ -1,14 +1,16 @@
 /**
  * Stable failure categories.
  *
- * `INVALID_SECRET`, `INVALID_INPUT`, and `AUTH` were added with `setPaymentList`.
- * Exhaustive `switch` statements over this union need cases for them.
+ * `INVALID_SECRET`, `INVALID_INPUT`, and `AUTH` were added with `setPaymentList`,
+ * and `NOT_FOUND` with encrypted lists. Exhaustive `switch` statements over this
+ * union need cases for them.
  */
 export type PaymentListErrorCode =
   | "INVALID_PUBKY"
   | "INVALID_SECRET"
   | "INVALID_INPUT"
   | "INVALID_DATA"
+  | "NOT_FOUND"
   | "RESOURCE_LIMIT"
   | "AUTH"
   | "TRANSPORT";

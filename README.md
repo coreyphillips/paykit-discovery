@@ -22,7 +22,7 @@ run build scripts or require a TypeScript compiler.
 import { getPaymentList } from "@coreyphillips/paykit-discovery";
 
 const payments = await getPaymentList(recipientPubky);
-// [{ appId: "bitkit", identifier: "btc-lightning-bolt12", payload: "lno1..." }]
+// [{ appId: "bitkit", identifier: "btc-lightning-bolt12", payload: '{"value":"lno1..."}' }]
 ```
 
 The result is a plain array:
@@ -30,7 +30,7 @@ The result is a plain array:
 ```ts
 type PaymentEndpoint = {
   appId: string;
-  identifier: string;
+  identifier: PaymentIdentifier; // any string; see "Identifiers and payloads"
   payload: string;
 };
 ```
@@ -38,11 +38,11 @@ type PaymentEndpoint = {
 ### Publish your payment details
 
 ```ts
-import { getPaymentList, setPaymentList } from "@coreyphillips/paykit-discovery";
+import { getPaymentList, Identifier, setPaymentList } from "@coreyphillips/paykit-discovery";
 
 const details = [
-  { appId: "my-wallet", identifier: "btc-lightning-bolt12", payload: "lno1..." },
-  { appId: "my-wallet", identifier: "btc-bitcoin-p2tr", payload: "bc1p..." },
+  { appId: "my-wallet", identifier: Identifier.BtcLightningBolt12, payload: JSON.stringify({ value: "lno1..." }) },
+  { appId: "my-wallet", identifier: Identifier.BtcBitcoinP2tr, payload: JSON.stringify({ value: "bc1p..." }) },
 ];
 
 // Public: anyone can discover these with getPaymentList(pubky).
@@ -99,15 +99,17 @@ library; use the TypeScript package for browser applications.
 Publishing takes a mnemonic or 64-character hex secret:
 
 ```rust,no_run
-use paykit_discovery::{get_encrypted_payment_list, set_payment_list, PaymentEndpoint};
+use paykit_discovery::{
+    get_encrypted_payment_list, identifiers, set_payment_list, PaymentEndpoint,
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mnemonic = std::env::var("PUBKY_MNEMONIC")?;
     let details = [PaymentEndpoint {
         app_id: "my-wallet".into(),
-        identifier: "btc-lightning-bolt12".into(),
-        payload: "lno1...".into(),
+        identifier: identifiers::BTC_LIGHTNING_BOLT12.into(),
+        payload: r#"{"value":"lno1..."}"#.into(),
     }];
 
     // Public: `access` is None.
@@ -160,8 +162,39 @@ SDK buffers directory listing responses before this package can inspect them.
 "Available" means published: the wallet must recognize the identifier,
 validate the payload, and handle expiry or amount constraints before paying.
 For example, select BOLT12 endpoints using
-`payments.filter(p => p.identifier === "btc-lightning-bolt12")` in TypeScript.
+`payments.filter(p => p.identifier === Identifier.BtcLightningBolt12)` in
+TypeScript.
 This package does not generate invoices or execute payments.
+
+## Identifiers and payloads
+
+`identifier` is an open string, not an enum. Paykit's
+[Payment Endpoint Identifier spec](https://github.com/pubky/paykit-rs/blob/master/specs/payment-endpoint-identifier.md)
+recommends `{asset}-{rail}-{format}` names, and a new one exists as soon as
+someone publishes it. `Identifier` in TypeScript and the `identifiers` module
+in Rust name the common ones so editors can suggest them. They are not a limit:
+any valid identifier can be published and read, so skip values your wallet does
+not support.
+
+| Value | TypeScript | Rust |
+| --- | --- | --- |
+| `btc-bitcoin-p2tr` | `Identifier.BtcBitcoinP2tr` | `identifiers::BTC_BITCOIN_P2TR` |
+| `btc-bitcoin-p2wpkh` | `Identifier.BtcBitcoinP2wpkh` | `identifiers::BTC_BITCOIN_P2WPKH` |
+| `btc-lightning-bolt11` | `Identifier.BtcLightningBolt11` | `identifiers::BTC_LIGHTNING_BOLT11` |
+| `btc-lightning-bolt12` | `Identifier.BtcLightningBolt12` | `identifiers::BTC_LIGHTNING_BOLT12` |
+| `eur-sepa-iban` | `Identifier.EurSepaIban` | `identifiers::EUR_SEPA_IBAN` |
+| `gbp-fps-sortcode` | `Identifier.GbpFpsSortcode` | `identifiers::GBP_FPS_SORTCODE` |
+| `usd-revolut-tag` | `Identifier.UsdRevolutTag` | `identifiers::USD_REVOLUT_TAG` |
+| `usdc-solana-address` | `Identifier.UsdcSolanaAddress` | `identifiers::USDC_SOLANA_ADDRESS` |
+| `usdt-ethereum-address` | `Identifier.UsdtEthereumAddress` | `identifiers::USDT_ETHEREUM_ADDRESS` |
+| `usdt-tron-address` | `Identifier.UsdtTronAddress` | `identifiers::USDT_TRON_ADDRESS` |
+
+`payload` is opaque UTF-8 text, preserved exactly as published. For
+interoperability the spec recommends a JSON object: `value` holds the address,
+invoice, offer, or other handle, `min` and `max` give accepted amounts as
+decimal strings in the asset's major unit, and formats can add their own fields
+such as `bic`. Other payload shapes are allowed and this package never parses
+them, so validate each payload for its identifier.
 
 ## Publishing contract
 
@@ -196,8 +229,9 @@ This package does not generate invoices or execute payments.
   the same arguments is safe. No error message or cause includes the secret,
   mnemonic, or access key.
 
-`PaymentListErrorCode` gained `INVALID_SECRET`, `INVALID_INPUT`, and `AUTH` in
-this release. Exhaustive `switch` statements over it need cases for them.
+`PaymentListErrorCode` gained `INVALID_SECRET`, `INVALID_INPUT`, `AUTH`, and
+`NOT_FOUND` in this release. Exhaustive `switch` statements over it need cases
+for them.
 
 ## Encrypted Payment Lists
 
@@ -218,13 +252,33 @@ This is a format specific to this package, not a Paykit Private Payment List.
   with it can read that one list; treat it like a secret.
 - **Reading:** `getPaymentList(pubky, access)` or
   `get_encrypted_payment_list(pubky, access)` returns only that list. A
-  missing document returns `[]`. A wrong key or a tampered or moved document
-  fails with invalid data.
+  missing document fails with `NOT_FOUND` (`Error::NotFound` in Rust), because
+  an access string means a list should exist. A wrong key or a tampered or
+  moved document fails with invalid data.
 
 Everything under `/pub/` can be listed publicly, so others can see how many
 encrypted documents exist and when they were written, but not their contents.
 Documents stay until deleted, and earlier documents remain readable to anyone
 holding their access strings; this package does not revoke or clean them up.
+
+## Homeserver trust
+
+An identity's homeserver stores and serves its lists, so what it can do depends
+on the mode.
+
+- **Public lists are not authenticated.** They are plaintext files with no
+  signature from the identity. The identity's signed Pkarr record only says
+  which homeserver to use, so a malicious or compromised homeserver can change
+  public payment details and readers will accept them.
+- **Encrypted lists reveal tampering.** Without the access string, a homeserver
+  cannot change a document or substitute another one; reading fails with
+  invalid data. It can still delete or withhold a document, which fails with
+  `NOT_FOUND`.
+- **Everyone holding an access string shares its key.** The identity does not
+  sign the list, so one holder working with the homeserver could replace the
+  document with a forged list that other holders of that string would accept.
+  Give each payer their own list: every encrypted set creates its own path and
+  key, so a forged list can only reach the holder who forged it.
 
 ## For AI coding assistants
 

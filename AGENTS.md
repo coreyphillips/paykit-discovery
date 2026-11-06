@@ -8,6 +8,9 @@ the integration small: in TypeScript, `getPaymentList(pubky, access?)` and
 
 - Return an array/vector of endpoint records. Preserve the publishing App ID,
   Payment Endpoint Identifier, and opaque UTF-8 Payment Endpoint Payload.
+- Identifiers are open strings. `Identifier` and `identifiers` only name common
+  values; never reject or drop an endpoint because its identifier is unlisted.
+  Keep both lists equal to `known_identifiers` in `fixtures/discovery.json`.
 - Discovery does not require a login, identity secret, database, Encrypted
   Link, or payment execution adapter. Only the set functions take a secret.
 - A secret is a BIP39 English mnemonic or a 32-byte identity secret (64 hex
@@ -15,9 +18,10 @@ the integration small: in TypeScript, `getPaymentList(pubky, access?)` and
   (`pubky-core-ffi`): the first 32 bytes of the BIP39 seed with no passphrase.
   Never log secrets, mnemonics, derived keys, or access keys, or put them in
   error messages or causes. Zero derived buffers when done.
-- Missing public data is empty. Network, malformed-data, and resource-limit
-  failures are errors; never return a silently incomplete list. A failed set
-  rejects even if some writes landed.
+- Missing public data is empty. A missing encrypted document is an error,
+  because an access string means a list should exist. Network, malformed-data,
+  and resource-limit failures are errors; never return a silently incomplete
+  list. A failed set rejects even if some writes landed.
 - Discover Apps through the identity-wide Paykit App Registry. Never merge
   endpoints from different Apps by identifier alone. Public sets register
   missing Apps, preserve every other registry field, refuse to overwrite a
