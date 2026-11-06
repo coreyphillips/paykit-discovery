@@ -18,6 +18,7 @@ use paykit_lib::{PaykitAppId, PaykitAppRegistry, PaymentEndpointIdentifier, Paym
 use pubky::{PubkyResource, PublicKey, PublicStorage};
 
 mod encrypted;
+pub mod identifiers;
 mod publish;
 mod secret;
 
@@ -36,6 +37,8 @@ pub struct PaymentEndpoint {
     /// Paykit App that published these receiving details, for example `bitkit`.
     pub app_id: String,
     /// Payment Endpoint Identifier, for example `btc-lightning-bolt12`.
+    ///
+    /// [`identifiers`] names common values. Any valid identifier is allowed.
     pub identifier: String,
     /// Opaque UTF-8 receiving details. The wallet must validate this payload.
     pub payload: String,
@@ -199,13 +202,15 @@ pub struct PublishedPaymentList {
 /// # Examples
 ///
 /// ```no_run
-/// use paykit_discovery::{get_encrypted_payment_list, set_payment_list, PaymentEndpoint};
+/// use paykit_discovery::{
+///     get_encrypted_payment_list, identifiers, set_payment_list, PaymentEndpoint,
+/// };
 ///
 /// # async fn example(mnemonic: &str) -> Result<(), paykit_discovery::Error> {
 /// let endpoints = [PaymentEndpoint {
 ///     app_id: "my-wallet".into(),
-///     identifier: "btc-lightning-bolt11".into(),
-///     payload: "lnbc1...".into(),
+///     identifier: identifiers::BTC_LIGHTNING_BOLT11.into(),
+///     payload: r#"{"value":"lnbc1..."}"#.into(),
 /// }];
 /// let published = set_payment_list(mnemonic, &endpoints, true).await?;
 /// let access = published.access.expect("encrypted mode returns an access string");

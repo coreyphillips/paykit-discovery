@@ -8,6 +8,9 @@ the integration small: in TypeScript, `getPaymentList(pubky, access?)` and
 
 - Return an array/vector of endpoint records. Preserve the publishing App ID,
   Payment Endpoint Identifier, and opaque UTF-8 Payment Endpoint Payload.
+- Identifiers are open strings. `Identifier` and `identifiers` only name common
+  values; never reject or drop an endpoint because its identifier is unlisted.
+  Keep both lists equal to `known_identifiers` in `fixtures/discovery.json`.
 - Discovery does not require a login, identity secret, database, Encrypted
   Link, or payment execution adapter. Only the set functions take a secret.
 - A secret is a BIP39 English mnemonic or a 32-byte identity secret (64 hex

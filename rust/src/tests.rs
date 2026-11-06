@@ -237,6 +237,45 @@ fn test_listing_only_not_found_and_gone_are_empty() {
     }
 }
 
+#[test]
+fn test_known_identifiers_match_the_shared_fixture_and_paykit_convention() {
+    let fixture: Value =
+        serde_json::from_str(include_str!("../../fixtures/discovery.json")).unwrap();
+    let expected: Vec<&str> = fixture["known_identifiers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|value| value.as_str().unwrap())
+        .collect();
+    let known = [
+        identifiers::BTC_BITCOIN_P2TR,
+        identifiers::BTC_BITCOIN_P2WPKH,
+        identifiers::BTC_LIGHTNING_BOLT11,
+        identifiers::BTC_LIGHTNING_BOLT12,
+        identifiers::EUR_SEPA_IBAN,
+        identifiers::GBP_FPS_SORTCODE,
+        identifiers::USD_REVOLUT_TAG,
+        identifiers::USDC_SOLANA_ADDRESS,
+        identifiers::USDT_ETHEREUM_ADDRESS,
+        identifiers::USDT_TRON_ADDRESS,
+    ];
+    assert_eq!(known.as_slice(), expected.as_slice());
+    for value in known {
+        PaymentEndpointIdentifier::new(value).unwrap();
+        let segments: Vec<&str> = value.split('-').collect();
+        assert_eq!(segments.len(), 3, "{value}");
+        assert!(
+            segments.iter().all(|segment| {
+                !segment.is_empty()
+                    && segment
+                        .bytes()
+                        .all(|byte| matches!(byte, b'a'..=b'z' | b'0'..=b'9'))
+            }),
+            "{value}"
+        );
+    }
+}
+
 // Publishing and encrypted Payment Lists.
 
 fn publishing_fixture() -> Value {
@@ -398,6 +437,18 @@ fn test_encrypted_document_rejects_tampering_wrong_keys_and_relocation() {
     ] {
         assert!(is_invalid_data(&error));
     }
+}
+
+#[test]
+fn test_identifiers_outside_the_known_list_are_accepted() {
+    let details = [
+        endpoint("my-wallet", "Custom_v1.2", "x"),
+        endpoint("my-wallet", "xmr-monero-subaddress", "y"),
+    ];
+    assert_eq!(
+        publish::validate_endpoints(&details).unwrap().endpoints(),
+        details
+    );
 }
 
 #[test]

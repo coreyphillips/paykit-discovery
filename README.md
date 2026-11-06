@@ -22,7 +22,7 @@ run build scripts or require a TypeScript compiler.
 import { getPaymentList } from "@coreyphillips/paykit-discovery";
 
 const payments = await getPaymentList(recipientPubky);
-// [{ appId: "bitkit", identifier: "btc-lightning-bolt12", payload: "lno1..." }]
+// [{ appId: "bitkit", identifier: "btc-lightning-bolt12", payload: '{"value":"lno1..."}' }]
 ```
 
 The result is a plain array:
@@ -30,7 +30,7 @@ The result is a plain array:
 ```ts
 type PaymentEndpoint = {
   appId: string;
-  identifier: string;
+  identifier: PaymentIdentifier; // any string; see "Identifiers and payloads"
   payload: string;
 };
 ```
@@ -38,11 +38,11 @@ type PaymentEndpoint = {
 ### Publish your payment details
 
 ```ts
-import { getPaymentList, setPaymentList } from "@coreyphillips/paykit-discovery";
+import { getPaymentList, Identifier, setPaymentList } from "@coreyphillips/paykit-discovery";
 
 const details = [
-  { appId: "my-wallet", identifier: "btc-lightning-bolt12", payload: "lno1..." },
-  { appId: "my-wallet", identifier: "btc-bitcoin-p2tr", payload: "bc1p..." },
+  { appId: "my-wallet", identifier: Identifier.BtcLightningBolt12, payload: JSON.stringify({ value: "lno1..." }) },
+  { appId: "my-wallet", identifier: Identifier.BtcBitcoinP2tr, payload: JSON.stringify({ value: "bc1p..." }) },
 ];
 
 // Public: anyone can discover these with getPaymentList(pubky).
@@ -99,15 +99,17 @@ library; use the TypeScript package for browser applications.
 Publishing takes a mnemonic or 64-character hex secret:
 
 ```rust,no_run
-use paykit_discovery::{get_encrypted_payment_list, set_payment_list, PaymentEndpoint};
+use paykit_discovery::{
+    get_encrypted_payment_list, identifiers, set_payment_list, PaymentEndpoint,
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mnemonic = std::env::var("PUBKY_MNEMONIC")?;
     let details = [PaymentEndpoint {
         app_id: "my-wallet".into(),
-        identifier: "btc-lightning-bolt12".into(),
-        payload: "lno1...".into(),
+        identifier: identifiers::BTC_LIGHTNING_BOLT12.into(),
+        payload: r#"{"value":"lno1..."}"#.into(),
     }];
 
     // Public: `access` is None.
@@ -160,8 +162,39 @@ SDK buffers directory listing responses before this package can inspect them.
 "Available" means published: the wallet must recognize the identifier,
 validate the payload, and handle expiry or amount constraints before paying.
 For example, select BOLT12 endpoints using
-`payments.filter(p => p.identifier === "btc-lightning-bolt12")` in TypeScript.
+`payments.filter(p => p.identifier === Identifier.BtcLightningBolt12)` in
+TypeScript.
 This package does not generate invoices or execute payments.
+
+## Identifiers and payloads
+
+`identifier` is an open string, not an enum. Paykit's
+[Payment Endpoint Identifier spec](https://github.com/pubky/paykit-rs/blob/master/specs/payment-endpoint-identifier.md)
+recommends `{asset}-{rail}-{format}` names, and a new one exists as soon as
+someone publishes it. `Identifier` in TypeScript and the `identifiers` module
+in Rust name the common ones so editors can suggest them. They are not a limit:
+any valid identifier can be published and read, so skip values your wallet does
+not support.
+
+| Value | TypeScript | Rust |
+| --- | --- | --- |
+| `btc-bitcoin-p2tr` | `Identifier.BtcBitcoinP2tr` | `identifiers::BTC_BITCOIN_P2TR` |
+| `btc-bitcoin-p2wpkh` | `Identifier.BtcBitcoinP2wpkh` | `identifiers::BTC_BITCOIN_P2WPKH` |
+| `btc-lightning-bolt11` | `Identifier.BtcLightningBolt11` | `identifiers::BTC_LIGHTNING_BOLT11` |
+| `btc-lightning-bolt12` | `Identifier.BtcLightningBolt12` | `identifiers::BTC_LIGHTNING_BOLT12` |
+| `eur-sepa-iban` | `Identifier.EurSepaIban` | `identifiers::EUR_SEPA_IBAN` |
+| `gbp-fps-sortcode` | `Identifier.GbpFpsSortcode` | `identifiers::GBP_FPS_SORTCODE` |
+| `usd-revolut-tag` | `Identifier.UsdRevolutTag` | `identifiers::USD_REVOLUT_TAG` |
+| `usdc-solana-address` | `Identifier.UsdcSolanaAddress` | `identifiers::USDC_SOLANA_ADDRESS` |
+| `usdt-ethereum-address` | `Identifier.UsdtEthereumAddress` | `identifiers::USDT_ETHEREUM_ADDRESS` |
+| `usdt-tron-address` | `Identifier.UsdtTronAddress` | `identifiers::USDT_TRON_ADDRESS` |
+
+`payload` is opaque UTF-8 text, preserved exactly as published. For
+interoperability the spec recommends a JSON object: `value` holds the address,
+invoice, offer, or other handle, `min` and `max` give accepted amounts as
+decimal strings in the asset's major unit, and formats can add their own fields
+such as `bic`. Other payload shapes are allowed and this package never parses
+them, so validate each payload for its identifier.
 
 ## Publishing contract
 

@@ -7,6 +7,7 @@ import { publish } from "./publish.js";
 import { parseRegistry } from "./registry.js";
 import { parseSecret } from "./secret.js";
 export { PaymentListError } from "./errors.js";
+export { Identifier } from "./endpoints.js";
 const REGISTRY_PATH = "/pub/paykit/v0/app-registry.json";
 const MAX_REQUESTS = 512;
 /**

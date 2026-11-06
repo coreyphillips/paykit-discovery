@@ -37,15 +37,17 @@ deadline is needed.
 ## Publishing
 
 ```rust,no_run
-use paykit_discovery::{get_encrypted_payment_list, set_payment_list, PaymentEndpoint};
+use paykit_discovery::{
+    get_encrypted_payment_list, identifiers, set_payment_list, PaymentEndpoint,
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mnemonic = std::env::var("PUBKY_MNEMONIC")?;
     let details = [PaymentEndpoint {
         app_id: "my-wallet".into(),
-        identifier: "btc-lightning-bolt12".into(),
-        payload: "lno1...".into(),
+        identifier: identifiers::BTC_LIGHTNING_BOLT12.into(),
+        payload: r#"{"value":"lno1..."}"#.into(),
     }];
     let published = set_payment_list(&mnemonic, &details, true).await?;
     let access = published.access.expect("encrypted mode returns an access string");
@@ -63,8 +65,10 @@ writes one encrypted document at a new random path and returns the access
 string that opens it. `get_encrypted_payment_list` returns `Error::NotFound` if
 that document is missing. Errors never include the secret or access key.
 
-Payloads are opaque receiving details. Your wallet validates them, determines
-which identifiers it supports, and executes payments. Paykit Private Payment
+The `identifiers` module names common identifiers, but identifiers are open
+strings and any valid one can be published and read. Payloads are opaque
+receiving details. Your wallet validates them, determines which identifiers it
+supports, and executes payments. Paykit Private Payment
 Lists require the full Paykit SDK and are outside this package.
 
 See the [project README](https://github.com/coreyphillips/paykit-discovery)

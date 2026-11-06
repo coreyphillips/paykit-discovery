@@ -298,6 +298,12 @@ test("encrypted documents match the shared vector byte for byte", async () => {
   assert.deepEqual(parseDocument(await open(access.key, vector.owner, vector.path, sealed)), fixtureEndpoints(vector.expected));
 });
 
+test("identifiers outside the known list publish and read back unchanged", async () => {
+  const details = [endpoint("my-wallet", "Custom_v1.2", "x"), endpoint("my-wallet", "xmr-monero-subaddress", "y")];
+  await setPaymentList(mnemonic, details);
+  assert.deepEqual(await getPaymentList(owner), details);
+});
+
 test("reading rejects tampering, wrong keys, and moved documents", async () => {
   const vector = fixture.encrypted;
   const sealed = fromHex(vector.sealed_hex);

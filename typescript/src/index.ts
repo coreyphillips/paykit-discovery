@@ -10,7 +10,8 @@ import { publish } from "./publish.js";
 import { parseRegistry } from "./registry.js";
 import { parseSecret } from "./secret.js";
 export { PaymentListError, type PaymentListErrorCode } from "./errors.js";
-export type { PaymentEndpoint, PaymentSecret, SetPaymentListResult } from "./endpoints.js";
+export { Identifier } from "./endpoints.js";
+export type { KnownIdentifier, PaymentEndpoint, PaymentIdentifier, PaymentSecret, SetPaymentListResult } from "./endpoints.js";
 
 const REGISTRY_PATH = "/pub/paykit/v0/app-registry.json";
 const MAX_REQUESTS = 512;

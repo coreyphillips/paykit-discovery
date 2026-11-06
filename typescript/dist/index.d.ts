@@ -1,6 +1,7 @@
 import { type PaymentEndpoint, type PaymentSecret, type SetPaymentListResult } from "./endpoints.js";
 export { PaymentListError, type PaymentListErrorCode } from "./errors.js";
-export type { PaymentEndpoint, PaymentSecret, SetPaymentListResult } from "./endpoints.js";
+export { Identifier } from "./endpoints.js";
+export type { KnownIdentifier, PaymentEndpoint, PaymentIdentifier, PaymentSecret, SetPaymentListResult } from "./endpoints.js";
 /**
  * Discover all registered Apps' public Payment Endpoints for a Pubky identity.
  *
