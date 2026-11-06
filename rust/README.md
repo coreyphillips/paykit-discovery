@@ -60,7 +60,8 @@ secret as 64 hex characters. A mnemonic resolves the way Pubky Ring does. The
 identity must already have a homeserver. With `encrypted == false` it registers
 missing Apps and replaces the named Apps' public endpoints; with `true` it
 writes one encrypted document at a new random path and returns the access
-string that opens it. Errors never include the secret or access key.
+string that opens it. `get_encrypted_payment_list` returns `Error::NotFound` if
+that document is missing. Errors never include the secret or access key.
 
 Payloads are opaque receiving details. Your wallet validates them, determines
 which identifiers it supports, and executes payments. Paykit Private Payment
@@ -68,4 +69,4 @@ Lists require the full Paykit SDK and are outside this package.
 
 See the [project README](https://github.com/coreyphillips/paykit-discovery)
 for the matching TypeScript API, the publishing contract, the encrypted format,
-protocol limits, and development commands.
+homeserver trust, protocol limits, and development commands.

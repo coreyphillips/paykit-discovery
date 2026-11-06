@@ -401,6 +401,28 @@ fn test_encrypted_document_rejects_tampering_wrong_keys_and_relocation() {
 }
 
 #[test]
+fn test_missing_encrypted_document_is_not_found_not_empty() {
+    for code in [404, 410, 401, 403, 429, 500, 503] {
+        let error =
+            encrypted::read_error(pubky::Error::Request(pubky::errors::RequestError::Server {
+                status: pubky::StatusCode::from_u16(code).unwrap(),
+                message: "fixture".into(),
+            }));
+        if code == 404 || code == 410 {
+            assert!(matches!(error, Error::NotFound), "status {code}");
+        } else {
+            assert!(
+                matches!(
+                    error,
+                    Error::Discovery(paykit_lib::PaykitError::Transport { .. })
+                ),
+                "status {code}"
+            );
+        }
+    }
+}
+
+#[test]
 fn test_each_encrypted_document_gets_its_own_path_and_key() {
     let secret = hex32(&publishing_fixture()["encrypted"]["secret_hex"]);
     let owner = pubky::Keypair::from_secret(&secret).public_key();

@@ -214,18 +214,17 @@ pub(crate) fn open(
         })
 }
 
-/// Read, authenticate, and parse one encrypted document. Absence is empty.
+/// Read, authenticate, and parse one encrypted document. Absence is [`Error::NotFound`].
 pub(crate) async fn read(
     storage: &PublicStorage,
     owner: &PublicKey,
     access: &Access,
 ) -> Result<Vec<PaymentEndpoint>, Error> {
     let path = document_path(&access.id);
-    let mut response = match storage.get(format!("{owner}{path}")).await {
-        Ok(response) => response,
-        Err(error) if is_missing(&error) => return Ok(Vec::new()),
-        Err(error) => return Err(transport(error)),
-    };
+    let mut response = storage
+        .get(format!("{owner}{path}"))
+        .await
+        .map_err(read_error)?;
     if response
         .content_length()
         .is_some_and(|length| length > MAX_SEALED_BYTES as u64)
@@ -241,6 +240,15 @@ pub(crate) async fn read(
     }
     let plaintext = open(&access.key, owner, &path, &sealed)?;
     parse_document(&plaintext)
+}
+
+/// Map a failed read. Missing is an error here: an access string means a list should exist.
+pub(crate) fn read_error(error: pubky::Error) -> Error {
+    if is_missing(&error) {
+        Error::NotFound
+    } else {
+        transport(error)
+    }
 }
 
 fn transport<E: std::error::Error + Send + Sync + 'static>(source: E) -> Error {

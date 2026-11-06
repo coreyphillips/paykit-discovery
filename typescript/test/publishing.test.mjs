@@ -321,7 +321,17 @@ test("reading rejects tampering, wrong keys, and moved documents", async () => {
   await assert.rejects(getPaymentList(owner, `v1.${movedId}.${vector.key_hex}`), expectCode("INVALID_DATA"));
   files.set(documentPath(movedId), new Uint8Array(12 + (4 << 20) + 17));
   await assert.rejects(getPaymentList(owner, `v1.${movedId}.${vector.key_hex}`), expectCode("RESOURCE_LIMIT"));
-  assert.deepEqual(await getPaymentList(owner, `v1.${"0".repeat(32)}.${vector.key_hex}`), [], "a missing document is empty");
+});
+
+test("a missing encrypted document rejects with NOT_FOUND, not an empty list", async () => {
+  const access = `v1.${"0".repeat(32)}.${fixture.encrypted.key_hex}`;
+  await assert.rejects(getPaymentList(owner, access), expectCode("NOT_FOUND"));
+  for (const status of [404, 410]) {
+    PublicStorage.prototype.get = async () => { throw requestError(status); };
+    await assert.rejects(getPaymentList(owner, access), expectCode("NOT_FOUND"), `thrown ${status}`);
+  }
+  PublicStorage.prototype.get = async () => { throw requestError(500); };
+  await assert.rejects(getPaymentList(owner, access), expectCode("TRANSPORT"));
 });
 
 test("invalid access strings and identities fail before network access", async () => {

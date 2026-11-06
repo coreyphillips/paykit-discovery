@@ -196,8 +196,9 @@ This package does not generate invoices or execute payments.
   the same arguments is safe. No error message or cause includes the secret,
   mnemonic, or access key.
 
-`PaymentListErrorCode` gained `INVALID_SECRET`, `INVALID_INPUT`, and `AUTH` in
-this release. Exhaustive `switch` statements over it need cases for them.
+`PaymentListErrorCode` gained `INVALID_SECRET`, `INVALID_INPUT`, `AUTH`, and
+`NOT_FOUND` in this release. Exhaustive `switch` statements over it need cases
+for them.
 
 ## Encrypted Payment Lists
 
@@ -218,13 +219,33 @@ This is a format specific to this package, not a Paykit Private Payment List.
   with it can read that one list; treat it like a secret.
 - **Reading:** `getPaymentList(pubky, access)` or
   `get_encrypted_payment_list(pubky, access)` returns only that list. A
-  missing document returns `[]`. A wrong key or a tampered or moved document
-  fails with invalid data.
+  missing document fails with `NOT_FOUND` (`Error::NotFound` in Rust), because
+  an access string means a list should exist. A wrong key or a tampered or
+  moved document fails with invalid data.
 
 Everything under `/pub/` can be listed publicly, so others can see how many
 encrypted documents exist and when they were written, but not their contents.
 Documents stay until deleted, and earlier documents remain readable to anyone
 holding their access strings; this package does not revoke or clean them up.
+
+## Homeserver trust
+
+An identity's homeserver stores and serves its lists, so what it can do depends
+on the mode.
+
+- **Public lists are not authenticated.** They are plaintext files with no
+  signature from the identity. The identity's signed Pkarr record only says
+  which homeserver to use, so a malicious or compromised homeserver can change
+  public payment details and readers will accept them.
+- **Encrypted lists reveal tampering.** Without the access string, a homeserver
+  cannot change a document or substitute another one; reading fails with
+  invalid data. It can still delete or withhold a document, which fails with
+  `NOT_FOUND`.
+- **Everyone holding an access string shares its key.** The identity does not
+  sign the list, so one holder working with the homeserver could replace the
+  document with a forged list that other holders of that string would accept.
+  Give each payer their own list: every encrypted set creates its own path and
+  key, so a forged list can only reach the holder who forged it.
 
 ## For AI coding assistants
 

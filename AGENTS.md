@@ -15,9 +15,10 @@ the integration small: in TypeScript, `getPaymentList(pubky, access?)` and
   (`pubky-core-ffi`): the first 32 bytes of the BIP39 seed with no passphrase.
   Never log secrets, mnemonics, derived keys, or access keys, or put them in
   error messages or causes. Zero derived buffers when done.
-- Missing public data is empty. Network, malformed-data, and resource-limit
-  failures are errors; never return a silently incomplete list. A failed set
-  rejects even if some writes landed.
+- Missing public data is empty. A missing encrypted document is an error,
+  because an access string means a list should exist. Network, malformed-data,
+  and resource-limit failures are errors; never return a silently incomplete
+  list. A failed set rejects even if some writes landed.
 - Discover Apps through the identity-wide Paykit App Registry. Never merge
   endpoints from different Apps by identifier alone. Public sets register
   missing Apps, preserve every other registry field, refuse to overwrite a

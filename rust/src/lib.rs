@@ -70,6 +70,11 @@ pub enum Error {
     /// Public discovery failed, returned invalid data, or exceeded resource limits.
     #[error("could not retrieve the Payment List: {0}")]
     Discovery(#[from] paykit_lib::PaykitError),
+    /// No document exists for this encrypted access string.
+    ///
+    /// It was deleted, or the homeserver is withholding it.
+    #[error("the encrypted Payment List was not found")]
+    NotFound,
     /// The lookup exceeded its endpoint, request, or payload budget.
     #[error("Payment List exceeds the discovery resource limits")]
     ResourceLimit,
@@ -228,16 +233,17 @@ pub async fn set_payment_list(
 /// Open an encrypted Payment List published by [`set_payment_list`].
 ///
 /// `pubky` accepts the same forms as [`get_payment_list`]. `access` is the
-/// string returned by the encrypted publish. No login is needed. A missing
-/// document returns an empty vector. Endpoints are sorted by App ID and
-/// identifier. Run this inside a Tokio runtime.
+/// string returned by the encrypted publish. No login is needed. Endpoints are
+/// sorted by App ID and identifier. Run this inside a Tokio runtime.
 ///
 /// # Errors
 ///
 /// Returns [`Error::InvalidPubky`] or [`Error::InvalidInput`] before any
-/// network access. A wrong access string, a document moved to another path or
-/// identity, tampering, or a malformed document returns [`Error::Discovery`]
-/// with invalid data. Transport failures and oversized documents also fail.
+/// network access. A missing document returns [`Error::NotFound`], because an
+/// access string means a list should exist. A wrong access string, a document
+/// moved to another path or identity, tampering, or a malformed document returns
+/// [`Error::Discovery`] with invalid data. Transport failures and oversized
+/// documents also fail.
 pub async fn get_encrypted_payment_list(
     pubky: &str,
     access: &str,

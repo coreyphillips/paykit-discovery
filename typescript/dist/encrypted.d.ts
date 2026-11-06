@@ -31,5 +31,5 @@ export declare function parseDocument(bytes: Uint8Array): PaymentEndpoint[];
 export declare function seal(key: Uint8Array<ArrayBuffer>, nonce: Uint8Array<ArrayBuffer>, owner: string, path: string, plaintext: Uint8Array<ArrayBuffer>): Promise<Uint8Array<ArrayBuffer>>;
 /** Decrypt a stored document. A wrong key, owner, or path, or any tampering, fails. */
 export declare function open(key: Uint8Array<ArrayBuffer>, owner: string, path: string, sealed: Uint8Array): Promise<Uint8Array<ArrayBuffer>>;
-/** Read, authenticate, and parse one encrypted document. Absence is `[]`. */
+/** Read, authenticate, and parse one encrypted document. Absence is `NOT_FOUND`. */
 export declare function readEncrypted(owner: string, access: Access): Promise<PaymentEndpoint[]>;
