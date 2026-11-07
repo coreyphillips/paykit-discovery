@@ -835,3 +835,45 @@ fn test_signup_code_rejects_invalid_responses_without_quoting_them() {
         assert!(!error.to_string().contains("FAKE-CODE"), "{body}");
     }
 }
+
+#[test]
+fn test_relay_answers_decide_whether_a_record_exists() {
+    const OK: Option<pubky::StatusCode> = Some(pubky::StatusCode::OK);
+    const NOT_FOUND: Option<pubky::StatusCode> = Some(pubky::StatusCode::NOT_FOUND);
+    const UNAVAILABLE: Option<pubky::StatusCode> = Some(pubky::StatusCode::SERVICE_UNAVAILABLE);
+
+    for held in [&[OK][..], &[NOT_FOUND, OK], &[None, OK], &[UNAVAILABLE, OK]] {
+        assert!(signup::record_on_relays(held).unwrap(), "{held:?}");
+    }
+    assert!(!signup::record_on_relays(&[NOT_FOUND, NOT_FOUND]).unwrap());
+    for unanswered in [
+        &[NOT_FOUND, None][..],
+        &[None, NOT_FOUND],
+        &[NOT_FOUND, UNAVAILABLE],
+        &[None, None],
+    ] {
+        let result = signup::record_on_relays(unanswered);
+        assert!(matches!(result, Err(Error::SignUp(_))), "{unanswered:?}");
+    }
+}
+
+#[test]
+fn test_signup_failure_keeps_nothing_that_can_quote_the_code() {
+    let quoted = "https://key/auth/grant/signup?signup_token=FAKE-CODE";
+    let refused = pubky::Error::Request(pubky::errors::RequestError::Server {
+        status: pubky::StatusCode::FORBIDDEN,
+        message: format!("refused ({quoted})"),
+    });
+    let invalid = pubky::Error::Request(pubky::errors::RequestError::Validation {
+        message: format!("failed ({quoted})"),
+    });
+    for (failure, expected) in [
+        (&refused, "the homeserver returned status 403 Forbidden"),
+        (&invalid, "the signup request failed"),
+    ] {
+        assert!(failure.to_string().contains("FAKE-CODE"));
+        let error = signup::signup_failure(failure);
+        assert!(matches!(&error, Error::SignUp(text) if text == expected));
+        assert!(!format!("{error} {error:?}").contains("FAKE-CODE"));
+    }
+}

@@ -6,6 +6,10 @@ import { statusOf } from "./io.js";
 const SIGNUP_CODE_URL = "https://homegate.pubky.app/ip_verification";
 /** The Pkarr relays the Pubky SDK resolves through by default. */
 const PKARR_RELAYS = ["https://pkarr.pubky.app", "https://pkarr.pubky.org"];
+/** How long relays get to answer, matching the SDK's own relay requests. */
+const RELAY_TIMEOUT_MS = 5_000;
+/** Generous, because a request that times out may still have used a signup code. */
+const HOMEGATE_TIMEOUT_MS = 30_000;
 
 /**
  * Sign up the identity if, and only if, no homeserver record for it can be found.
@@ -32,18 +36,28 @@ async function hasRecord(pubky: Pubky, owner: PublicKey): Promise<boolean> {
   }
   // "Not found" above is weak evidence, because that lookup reports an expired
   // record as not found. Relays keep expired records, so ask them directly. The
-  // SDK does not expose this policy. A record no reachable relay holds counts as
-  // none, but with no relay answering nothing is known, so stop.
+  // SDK does not expose this policy. Relays do not all hold the same records, and
+  // signing up over one costs far more than a retry, so one relay holding a record
+  // settles it and "no record" needs every relay to say so.
   const key = owner.z32();
-  const statuses = await Promise.all(PKARR_RELAYS.map((relay) => relayStatus(`${relay}/${key}?policy=CacheOnly`)));
-  if (statuses.includes(200)) return true;
-  if (statuses.includes(404)) return false;
+  const signal = AbortSignal.timeout(RELAY_TIMEOUT_MS);
+  const statuses = PKARR_RELAYS.map((relay) => relayStatus(`${relay}/${key}?policy=CacheOnly`, signal));
+  if (await anyRelayHoldsRecord(statuses)) return true;
+  if ((await Promise.all(statuses)).every((status) => status === 404)) return false;
   throw new PaymentListError("TRANSPORT", "Could not look up the identity's homeserver");
 }
 
-async function relayStatus(url: string): Promise<number | undefined> {
+/** True as soon as one relay answers 200, so a stalled relay is not waited for. */
+function anyRelayHoldsRecord(statuses: Promise<number | undefined>[]): Promise<boolean> {
+  const found = statuses.map(async (status) => {
+    if (await status !== 200) throw new Error("no record");
+  });
+  return Promise.any(found).then(() => true, () => false);
+}
+
+async function relayStatus(url: string, signal: AbortSignal): Promise<number | undefined> {
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { signal });
     await response.body?.cancel();
     return response.status;
   } catch {
@@ -56,11 +70,14 @@ async function createAccount(signer: Signer, homeserver: PublicKey, signupCode: 
     await signer.signup(homeserver, signupCode);
     return;
   } catch (cause) {
-    if (statusOf(cause) !== 409) throw new PaymentListError("AUTH", "Could not sign up on the homeserver", { cause });
+    const status = statusOf(cause);
+    // No cause here: the SDK sends the code in the URL, and its errors can quote that URL.
+    if (status !== 409) throw new PaymentListError("AUTH", `Could not sign up on the homeserver${status === undefined ? "" : `: status ${status}`}`);
   }
   // The account exists, so an earlier call failed before publishing its record.
+  // publishHomeserverForce takes ownership of its argument, so it gets its own copy.
   const pkdns = signer.pkdns;
-  try { await pkdns.publishHomeserverForce(homeserver); }
+  try { await pkdns.publishHomeserverForce(PublicKey.from(homeserver.z32())); }
   finally { pkdns.free(); }
 }
 
@@ -68,7 +85,7 @@ async function requestSignupCode(): Promise<{ signupCode: string; homeserver: Pu
   let response: Response;
   let body: string;
   try {
-    response = await fetch(SIGNUP_CODE_URL, { method: "POST" });
+    response = await fetch(SIGNUP_CODE_URL, { method: "POST", signal: AbortSignal.timeout(HOMEGATE_TIMEOUT_MS) });
     body = await response.text();
   } catch (cause) {
     throw new PaymentListError("TRANSPORT", "Could not reach Homegate", { cause });

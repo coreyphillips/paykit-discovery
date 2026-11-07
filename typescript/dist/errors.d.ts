@@ -8,7 +8,7 @@
 export type PaymentListErrorCode = "INVALID_PUBKY" | "INVALID_SECRET" | "INVALID_INPUT" | "INVALID_DATA" | "NOT_FOUND" | "RESOURCE_LIMIT" | "AUTH" | "RATE_LIMITED" | "TRANSPORT";
 /**
  * A lookup or publish failed; an incomplete Payment List is never returned as success.
- * Messages and causes never include a secret, mnemonic, or access key.
+ * Messages and causes never include a secret, mnemonic, access key, or signup code.
  */
 export declare class PaymentListError extends Error {
     readonly code: PaymentListErrorCode;

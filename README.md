@@ -262,10 +262,12 @@ Publishing signs an identity up only when no homeserver record for it can be
 found. There is nothing to call or configure.
 
 - **When:** after the input is validated, the identity's homeserver record is
-  looked up, then the Pkarr relays are asked for any record they still hold. An
+  looked up, then each Pkarr relay is asked for any record it still holds. An
   identity with a record is never signed up, even if the record has expired;
   it goes on to sign-in as usual. A failed lookup is an error, never treated as
-  "no record".
+  "no record". Relays do not all hold the same records, so that includes any one
+  relay not answering: until it recovers, a new identity cannot publish, and the
+  call fails with `TRANSPORT` (`Error::SignUp` in Rust) without using a code.
 - **How:** a `POST` to `https://homegate.pubky.app/ip_verification` returns a
   signup code and the homeserver it belongs to, and the identity signs up there.
   [Homegate](https://github.com/pubky/homegate) chooses that homeserver, and
@@ -278,6 +280,8 @@ found. There is nothing to call or configure.
 - **Wrong secrets:** a mistyped secret that is still valid is a different
   identity, so it is signed up instead of failing. Check that the returned
   `pubky` is the one you expect.
+- **Timeouts:** relays get 5 seconds to answer, and Homegate 30. A relay that
+  misses its deadline counts as not answering.
 - **Retries:** a signup that fails after a code is issued still counts against
   the limit. Calling again is safe, and a later call repairs an account whose
   homeserver record was not published.

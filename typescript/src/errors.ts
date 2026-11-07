@@ -18,7 +18,7 @@ export type PaymentListErrorCode =
 
 /**
  * A lookup or publish failed; an incomplete Payment List is never returned as success.
- * Messages and causes never include a secret, mnemonic, or access key.
+ * Messages and causes never include a secret, mnemonic, access key, or signup code.
  */
 export class PaymentListError extends Error {
   readonly name = "PaymentListError";

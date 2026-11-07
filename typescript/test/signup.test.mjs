@@ -17,12 +17,14 @@ const relayUrls = [
 ];
 const originals = {
   fetch: globalThis.fetch,
+  timeout: AbortSignal.timeout,
   lookup: Pubky.prototype.getHomeserverOf,
   signup: Signer.prototype.signup,
   publish: Pkdns.prototype.publishHomeserverForce,
 };
 
 let requests;
+let deadlines;
 let signups;
 let published;
 let record;
@@ -32,6 +34,10 @@ let homegateResponse;
 function expectCode(code) { return (error) => error instanceof PaymentListError && error.code === code; }
 function homegateAnswers(status, body) { homegateResponse = () => new Response(body, { status }); }
 function homegateCalls() { return requests.filter(([url]) => url === homegateUrl); }
+function failed() { throw new TypeError("fetch failed"); }
+function stalled(init) {
+  return new Promise((_, reject) => { init?.signal?.addEventListener("abort", () => reject(init.signal.reason)); });
+}
 function requestError(statusCode) {
   return Object.assign(new Error(`status ${statusCode}`), { name: "RequestError", data: { statusCode } });
 }
@@ -47,6 +53,7 @@ async function ensure() {
 
 beforeEach(() => {
   requests = [];
+  deadlines = [];
   signups = [];
   published = [];
   record = () => undefined;
@@ -56,15 +63,19 @@ beforeEach(() => {
     const target = String(url);
     requests.push([target, init?.method ?? "GET"]);
     const relay = relayUrls.indexOf(target);
-    return relay === -1 ? homegateResponse() : relays[relay]();
+    return relay === -1 ? homegateResponse(init) : relays[relay](init);
   };
+  // Keep the tests fast while still seeing which deadline was asked for.
+  AbortSignal.timeout = (milliseconds) => { deadlines.push(milliseconds); return originals.timeout.call(AbortSignal, 1); };
   Pubky.prototype.getHomeserverOf = async function () { return record(); };
   Signer.prototype.signup = async function (target, code) { signups.push([target.z32(), code]); };
-  Pkdns.prototype.publishHomeserverForce = async function (target) { published.push(target.z32()); };
+  // Like the SDK, this takes ownership of its argument, which leaves it unusable.
+  Pkdns.prototype.publishHomeserverForce = async function (target) { published.push(target.z32()); target.__destroy_into_raw(); };
 });
 
 afterEach(() => {
   globalThis.fetch = originals.fetch;
+  AbortSignal.timeout = originals.timeout;
   Pubky.prototype.getHomeserverOf = originals.lookup;
   Signer.prototype.signup = originals.signup;
   Pkdns.prototype.publishHomeserverForce = originals.publish;
@@ -97,10 +108,28 @@ test("a record held by one relay wins over the other relay failing", async () =>
   assert.deepEqual(signups, []);
 });
 
-test("no record on the one relay that answers counts as no record", async () => {
-  relays[0] = () => { throw new TypeError("fetch failed"); };
+test("a record on one relay settles the lookup without waiting for a stalled relay", async () => {
+  // A deadline that never fires, so only the found record can finish this lookup.
+  AbortSignal.timeout = () => new AbortController().signal;
+  relays[0] = stalled;
+  relays[1] = () => new Response("packet", { status: 200 });
   await ensure();
-  assert.equal(signups.length, 1);
+  assert.deepEqual(homegateCalls(), []);
+  assert.deepEqual(signups, []);
+});
+
+test("no record on one relay never signs up while another relay has not answered", async () => {
+  for (const unanswered of [failed, () => new Response(null, { status: 503 }), stalled]) {
+    relays[0] = unanswered;
+    await assert.rejects(ensure(), expectCode("TRANSPORT"));
+  }
+  assert.deepEqual(homegateCalls(), []);
+  assert.deepEqual(signups, []);
+});
+
+test("relays and Homegate each get a deadline", async () => {
+  await ensure();
+  assert.deepEqual(deadlines, [5_000, 30_000]);
 });
 
 test("a failed lookup never signs up, because it does not show there is no record", async () => {
@@ -123,11 +152,13 @@ test("Homegate's rate limit rejects with RATE_LIMITED and does not sign up", asy
   assert.deepEqual(signups, []);
 });
 
-test("an unreachable or failing Homegate rejects with TRANSPORT", async () => {
+test("an unreachable, failing, or stalled Homegate rejects with TRANSPORT", async () => {
   homegateAnswers(500, "Homeserver unavailable");
   await assert.rejects(ensure(), expectCode("TRANSPORT"));
-  homegateResponse = () => { throw new TypeError("fetch failed"); };
-  await assert.rejects(ensure(), expectCode("TRANSPORT"));
+  for (const unanswered of [failed, stalled]) {
+    homegateResponse = unanswered;
+    await assert.rejects(ensure(), expectCode("TRANSPORT"));
+  }
   assert.deepEqual(signups, []);
 });
 
@@ -155,13 +186,21 @@ test("an invalid Homegate response rejects with INVALID_DATA without quoting it"
   assert.deepEqual(signups, []);
 });
 
-test("a refused signup rejects with AUTH without revealing the code", async () => {
-  Signer.prototype.signup = async function () { throw new Error("Token required"); };
-  await assert.rejects(ensure(), (error) => {
-    assert.ok(expectCode("AUTH")(error));
-    assert.ok(!`${error.message} ${error.cause?.message}`.includes(signupCode));
-    return true;
-  });
+test("a failed signup rejects with AUTH and keeps nothing that can quote the code", async () => {
+  const url = `https://${homeserver}/auth/grant/signup?signup_token=${signupCode}`;
+  const failures = [
+    [new Error(`error sending request for url (${url})`), "Could not sign up on the homeserver"],
+    [Object.assign(requestError(403), { message: `refused (${url})` }), "Could not sign up on the homeserver: status 403"],
+  ];
+  for (const [failure, message] of failures) {
+    Signer.prototype.signup = async function () { throw failure; };
+    await assert.rejects(ensure(), (error) => {
+      assert.ok(expectCode("AUTH")(error));
+      assert.equal(error.message, message);
+      assert.equal(error.cause, undefined);
+      return true;
+    });
+  }
 });
 
 test("an account that already exists gets its homeserver record published again", async () => {

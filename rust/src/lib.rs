@@ -48,7 +48,7 @@ pub struct PaymentEndpoint {
 
 /// A lookup or publishing failure. No partial Payment List is returned on error.
 ///
-/// Messages never include a secret, mnemonic, or access key.
+/// Messages never include a secret, mnemonic, access key, or signup code.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
@@ -65,8 +65,12 @@ pub enum Error {
     #[error("could not sign in to the identity's homeserver: {0}")]
     Auth(#[source] pubky::Error),
     /// Looking up the identity's homeserver record or signing up failed.
+    ///
+    /// A relay that does not answer lands here, because only every relay
+    /// reporting no record shows that the identity has none. Nothing was signed
+    /// up, and calling again is safe.
     #[error("could not sign up the identity: {0}")]
-    SignUp(#[source] pubky::Error),
+    SignUp(String),
     /// Homegate refused a signup code because this IP address reached its limit.
     #[error("Homegate's signup limit for this IP address has been reached")]
     SignUpRateLimited,
