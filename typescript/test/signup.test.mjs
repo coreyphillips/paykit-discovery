@@ -65,8 +65,14 @@ beforeEach(() => {
     const relay = relayUrls.indexOf(target);
     return relay === -1 ? homegateResponse(init) : relays[relay](init);
   };
-  // Keep the tests fast while still seeing which deadline was asked for.
-  AbortSignal.timeout = (milliseconds) => { deadlines.push(milliseconds); return originals.timeout.call(AbortSignal, 1); };
+  // Keep the tests fast while still seeing which deadline was asked for. The real
+  // timer does not hold the event loop open, which a real pending request does.
+  AbortSignal.timeout = (milliseconds) => {
+    deadlines.push(milliseconds);
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(new DOMException("timed out", "TimeoutError")), 1);
+    return controller.signal;
+  };
   Pubky.prototype.getHomeserverOf = async function () { return record(); };
   Signer.prototype.signup = async function (target, code) { signups.push([target.z32(), code]); };
   // Like the SDK, this takes ownership of its argument, which leaves it unusable.
