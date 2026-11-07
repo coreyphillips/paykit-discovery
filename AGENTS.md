@@ -16,8 +16,8 @@ the integration small: in TypeScript, `getPaymentList(pubky, access?)` and
 - A secret is a BIP39 English mnemonic or a 32-byte identity secret (64 hex
   characters, or bytes in TypeScript). Resolve mnemonics as Pubky Ring does
   (`pubky-core-ffi`): the first 32 bytes of the BIP39 seed with no passphrase.
-  Never log secrets, mnemonics, derived keys, or access keys, or put them in
-  error messages or causes. Zero derived buffers when done.
+  Never log secrets, mnemonics, derived keys, access keys, or signup codes, or
+  put them in error messages or causes. Zero derived buffers when done.
 - Missing public data is empty. A missing encrypted document is an error,
   because an access string means a list should exist. Network, malformed-data,
   and resource-limit failures are errors; never return a silently incomplete
@@ -38,8 +38,15 @@ the integration small: in TypeScript, `getPaymentList(pubky, access?)` and
 - Rust uses the canonical `paykit-lib` APIs and `pubky-common` key derivation.
   TypeScript uses the official `@synonymdev/pubky` SDK, WebCrypto, and
   `@scure/bip39`, and follows the same Paykit wire format.
+- Publishing signs an identity up through Homegate only when no homeserver
+  record for it can be found. Signing up force-publishes that record and can
+  point an identity away from its data, so decide from the record, never from
+  a failed sign-in, which does not show that no account exists. A lookup reports
+  an expired record as not found, so also ask each Pkarr relay. One relay holding
+  a record settles it. Any relay not answering is a failed lookup, and a failed
+  lookup is an error. An identity with a record goes on to sign-in unchanged.
 - Do not add alternate network backends, private messaging, payment execution,
-  signup, or wallet-specific payload interpretation to this package.
+  or wallet-specific payload interpretation to this package.
 - Keep package examples runnable and distinguish GitHub installation from
   unpublished npm/crates.io packages.
 - Commit generated `typescript/dist` files with their source changes. GitHub

@@ -55,13 +55,33 @@ const shared = await getPaymentList(result.pubky, result.access);
 ```
 
 The secret is a BIP39 English mnemonic, the 32-byte identity secret as 64 hex
-characters, or those 32 bytes as a `Uint8Array`. The identity must already
-have a homeserver (for example, one created in Pubky Ring).
+characters, or those 32 bytes as a `Uint8Array`. An identity with no homeserver
+gets one automatically on its first publish.
 
 ```ts
 type SetPaymentListResult =
   | { pubky: string; encrypted: false }
   | { pubky: string; encrypted: true; access: string };
+```
+
+### Start without Pubky Ring
+
+Any BIP39 English mnemonic works, including a brand new one. If the identity
+has no homeserver yet, `setPaymentList` creates one first, with no invite code.
+See [Automatic signup](#automatic-signup). This example generates the mnemonic
+with `@scure/bip39`; any BIP39 tool works.
+
+```ts
+import { generateMnemonic } from "@scure/bip39";
+import { wordlist } from "@scure/bip39/wordlists/english.js";
+import { getPaymentList, setPaymentList } from "@coreyphillips/paykit-discovery";
+
+const mnemonic = generateMnemonic(wordlist); // Store this safely; it controls the identity.
+
+const { pubky } = await setPaymentList(mnemonic, [
+  { appId: "my-wallet", identifier: "btc-lightning-bolt12", payload: "lno1..." },
+]);
+const payments = await getPaymentList(pubky);
 ```
 
 Use it in Node.js or a browser application with an ESM-capable bundler. Pubky's
@@ -124,6 +144,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 ```
+
+An identity with no homeserver gets one automatically on its first publish.
+See [Automatic signup](#automatic-signup).
 
 These instructions install from this repository. The packages have not yet
 been published to npm or crates.io. Pin a Git commit in production for
@@ -203,9 +226,9 @@ them, so validate each payload for its identifier.
   identity secret, or 32 bytes (TypeScript only). A mnemonic resolves the way
   Pubky Ring does: the first 32 bytes of its BIP39 seed, with no BIP39
   passphrase, are the identity secret. Whitespace runs and letter case in the
-  phrase are normalized. The identity must already have a homeserver;
-  publishing signs in (client ID `paykit-discovery`) and signs out afterward,
-  but never signs up.
+  phrase are normalized. Publishing signs in (client ID `paykit-discovery`) and
+  signs out afterward. An identity with no homeserver is signed up first; see
+  [Automatic signup](#automatic-signup).
 - **Input:** 1 to 256 records. App IDs use lowercase letters, digits, and `-`
   (1 to 64 characters); identifiers follow the Payment Endpoint Identifier
   rules; payloads are non-empty, at most 64 KiB each and 4 MiB in total; at
@@ -223,16 +246,46 @@ them, so validate each payload for its identifier.
   Every call creates a new document with its own path and key, so a merchant
   can hand each customer their own list without overlap.
 - **Errors:** TypeScript rejects with `INVALID_SECRET`, `INVALID_INPUT`,
-  `AUTH` (sign-in failed, for example no homeserver), `INVALID_DATA`,
-  `RESOURCE_LIMIT`, or `TRANSPORT` (failed writes and concurrent registry
-  changes). Rust returns the matching `Error` variants. A publish is not
+  `AUTH` (sign-in or signup refused), `RATE_LIMITED` (Homegate's signup limit),
+  `INVALID_DATA`, `RESOURCE_LIMIT`, or `TRANSPORT` (failed writes and concurrent
+  registry changes). Rust returns the matching `Error` variants. A publish is not
   atomic: after a failure some writes may have landed, and calling again with
   the same arguments is safe. No error message or cause includes the secret,
   mnemonic, or access key.
 
-`PaymentListErrorCode` gained `INVALID_SECRET`, `INVALID_INPUT`, `AUTH`, and
-`NOT_FOUND` in this release. Exhaustive `switch` statements over it need cases
-for them.
+`PaymentListErrorCode` gained `INVALID_SECRET`, `INVALID_INPUT`, `AUTH`,
+`NOT_FOUND`, and `RATE_LIMITED` in this release. Exhaustive `switch` statements
+over it need cases for them.
+
+## Automatic signup
+
+Publishing signs an identity up only when no homeserver record for it can be
+found. There is nothing to call or configure.
+
+- **When:** after the input is validated, the identity's homeserver record is
+  looked up, then each Pkarr relay is asked for any record it still holds. An
+  identity with a record is never signed up, even if the record has expired;
+  it goes on to sign-in as usual. A failed lookup is an error, never treated as
+  "no record". Relays do not all hold the same records, so that includes any one
+  relay not answering: until it recovers, a new identity cannot publish, and the
+  call fails with `TRANSPORT` (`Error::SignUp` in Rust) without using a code.
+- **How:** a `POST` to `https://homegate.pubky.app/ip_verification` returns a
+  signup code and the homeserver it belongs to, and the identity signs up there.
+  [Homegate](https://github.com/pubky/homegate) chooses that homeserver, and
+  [Homeserver trust](#homeserver-trust) applies to it. To use a different one,
+  create the identity in Pubky Ring first.
+- **Limits:** codes are limited per IP address, by default to 2 a week and 4 a
+  year, and a deployment can set its own. Everyone behind one address shares
+  the limit, so publish new identities from the user's device rather than a
+  shared backend. `RATE_LIMITED` means this limit was reached.
+- **Wrong secrets:** a mistyped secret that is still valid is a different
+  identity, so it is signed up instead of failing. Check that the returned
+  `pubky` is the one you expect.
+- **Timeouts:** relays get 5 seconds to answer, and Homegate 30. A relay that
+  misses its deadline counts as not answering.
+- **Retries:** a signup that fails after a code is issued still counts against
+  the limit. Calling again is safe, and a later call repairs an account whose
+  homeserver record was not published.
 
 ## Encrypted Payment Lists
 
@@ -287,7 +340,9 @@ To read payment details, use `getPaymentList(pubky)` or
 `get_payment_list(pubky)`; never ask for a secret to read. To publish the
 user's own payment details, use `setPaymentList(secret, details, encrypted?)`
 or `set_payment_list(secret, details, encrypted)`, and only with a secret the
-user provides for that purpose. Never log, store, or display the secret or an
+user provides for that purpose. A secret with no homeserver is signed up
+automatically, so check that the returned `pubky` is the one the user expects.
+Never log, store, or display the secret or an
 access string beyond handing the access string to its intended recipient. Keep
 `appId`/`app_id` attached to the selected endpoint. Treat `payload` as receiving
 details for that `identifier`; interpret it with the wallet's existing payment

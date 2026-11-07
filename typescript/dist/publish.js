@@ -4,6 +4,7 @@ import { deriveKey, documentPath, formatAccess, MAX_SEALED_BYTES, newDocumentId,
 import { PaymentListError } from "./errors.js";
 import { address, endpointPrefix, isMissing, listIdentifiers, readBytes, readText, statusOf } from "./io.js";
 import { emptyRegistry, parseRegistry, registerMissingApps, serializeRegistry } from "./registry.js";
+import { ensureHomeserver } from "./signup.js";
 /** Shown in the identity's session list on its homeserver. */
 const CLIENT_ID = "paykit-discovery";
 const REGISTRY_PATH = "/pub/paykit/v0/app-registry.json";
@@ -12,23 +13,25 @@ const LOCK_SECONDS = 60;
 const LOCK_ATTEMPTS = 8;
 const encoder = new TextEncoder();
 /**
- * Sign in as the identity and publish an already validated list.
+ * Sign in as the identity and publish an already validated list, signing the
+ * identity up first when it has no homeserver record.
  * `document` is the serialized plaintext for encrypted mode.
  */
 export async function publish(secret, apps, document) {
     let pubky;
     let keypair;
+    let ownerKey;
     let signer;
     let session;
     let storage;
     let publicStorage;
     try {
         keypair = Keypair.fromSecret(secret);
-        const ownerKey = keypair.publicKey;
+        ownerKey = keypair.publicKey;
         const owner = ownerKey.z32();
-        ownerKey.free();
         pubky = new Pubky();
         signer = pubky.signer(keypair);
+        await ensureHomeserver(pubky, signer, ownerKey);
         try {
             session = await signer.signin(CLIENT_ID);
         }
@@ -56,7 +59,7 @@ export async function publish(secret, apps, document) {
             }
             catch { /* best effort */ }
         }
-        for (const owned of [publicStorage, storage, session, signer, keypair, pubky])
+        for (const owned of [publicStorage, storage, session, signer, ownerKey, keypair, pubky])
             owned?.free();
     }
 }

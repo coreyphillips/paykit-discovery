@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 import { readFileSync } from "node:fs";
-import { PublicStorage, Signer } from "@synonymdev/pubky";
+import { Pubky, PublicKey, PublicStorage, Signer } from "@synonymdev/pubky";
 import { getPaymentList, PaymentListError, setPaymentList } from "../dist/index.js";
 import { deriveKey, documentPath, formatAccess, open, parseAccess, parseDocument, seal, serializeDocument, toHex } from "../dist/encrypted.js";
 import { flattenEndpoints, validateEndpoints } from "../dist/endpoints.js";
@@ -14,11 +14,20 @@ const owner = fixture.secrets[0].pubky;
 const base = `pubky://${owner}`;
 const registryPath = "/pub/paykit/v0/app-registry.json";
 const encryptedPrefix = "/pub/paykit-discovery/v1/encrypted/";
+const homeserver = "5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo";
 const encoder = new TextEncoder();
-const originals = { get: PublicStorage.prototype.get, list: PublicStorage.prototype.list, signin: Signer.prototype.signin };
+const originals = {
+  fetch: globalThis.fetch,
+  get: PublicStorage.prototype.get,
+  list: PublicStorage.prototype.list,
+  lookup: Pubky.prototype.getHomeserverOf,
+  signin: Signer.prototype.signin,
+  signup: Signer.prototype.signup,
+};
 
 let files;
 let calls;
+let lookups;
 let signins;
 let signouts;
 let locks;
@@ -30,7 +39,7 @@ function requestError(statusCode) {
 function fromHex(hex) { return Uint8Array.from(hex.match(/../g) ?? [], (byte) => parseInt(byte, 16)); }
 function text(path) { return new TextDecoder().decode(files.get(path)); }
 function expectCode(code) { return (error) => error instanceof PaymentListError && error.code === code; }
-function network() { return calls.length + signins.length; }
+function network() { return calls.length + signins.length + lookups; }
 function endpoint(appId, identifier, payload) { return { appId, identifier, payload }; }
 function fixtureEndpoints(list) { return list.map(({ app_id, identifier, payload }) => endpoint(app_id, identifier, payload)); }
 function endpointPath(appId, identifier) { return `/pub/paykit/v0/apps/${appId}/endpoints/${identifier}`; }
@@ -74,6 +83,7 @@ function fakeSession() {
 beforeEach(() => {
   files = new Map();
   calls = [];
+  lookups = 0;
   signins = [];
   signouts = 0;
   locks = new Set();
@@ -89,6 +99,7 @@ beforeEach(() => {
     return [...files.keys()].filter((path) => path.startsWith(prefix)).sort()
       .filter((path) => !cursor || owner + path > cursor).slice(0, limit).map((path) => base + path);
   };
+  Pubky.prototype.getHomeserverOf = async function () { lookups++; return PublicKey.from(homeserver); };
   Signer.prototype.signin = async function (clientId) {
     const key = this.publicKey;
     signins.push({ clientId, pubky: key.z32() });
@@ -99,9 +110,12 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  globalThis.fetch = originals.fetch;
   PublicStorage.prototype.get = originals.get;
   PublicStorage.prototype.list = originals.list;
+  Pubky.prototype.getHomeserverOf = originals.lookup;
   Signer.prototype.signin = originals.signin;
+  Signer.prototype.signup = originals.signup;
 });
 
 test("a mnemonic, its hex secret, and its 32 bytes publish as the same pubky", async () => {
@@ -234,6 +248,20 @@ test("sign-in failures reject with AUTH and write nothing", async () => {
   }
   assert.equal(files.size, 0);
   assert.equal(signouts, 0);
+});
+
+test("an identity with no homeserver is signed up before it publishes", async () => {
+  const order = [];
+  Pubky.prototype.getHomeserverOf = async function () { return undefined; };
+  globalThis.fetch = async (url) => (String(url).endsWith("/ip_verification")
+    ? new Response(JSON.stringify({ signupCode: "FAKE-CODE", homeserverPubky: homeserver }))
+    : new Response(null, { status: 404 }));
+  Signer.prototype.signup = async function () { order.push("signup"); };
+  hooks.signin = async () => { order.push("signin"); };
+  const result = await setPaymentList(mnemonic, [endpoint("bitkit", "btc", "x")]);
+  assert.equal(result.pubky, owner);
+  assert.deepEqual(order, ["signup", "signin"]);
+  assert.ok(files.has(endpointPath("bitkit", "btc")));
 });
 
 test("a sign-out failure does not change the result", async () => {
